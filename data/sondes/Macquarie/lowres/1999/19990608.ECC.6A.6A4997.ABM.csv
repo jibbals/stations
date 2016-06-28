@@ -1,0 +1,67 @@
+* This file was re-written by PREP_CSX to apply WOUDC correction data.
+
+#CONTENT
+Class,Category,Level,Form
+WOUDC,OzoneSonde,1.0,1
+
+#DATA_GENERATION
+Date,Agency,Version,ScientificAuthority
+1999-06-08,ABM,1.0,Atmosphere Watch
+
+#PLATFORM
+Type,ID,Name,Country,GAW_ID
+STN,029,Fantasy Island,AUS
+
+#INSTRUMENT
+Name,Model,Number
+ECC,6A,6A4997
+
+#LOCATION
+Latitude,Longitude,Height
+-54.50,158.95,7
+
+#TIMESTAMP
+UTCOffset,Date,Time
++00:00:00,1999-06-08,23:23:00
+
+#FLIGHT_SUMMARY
+IntegratedO3,CorrectionCode,SondeTotalO3,CorrectionFactor,TotalO3,WLCode,ObsType,Instrument,Number
+144.8,4,237.8,,330,2,5,Dobson,006
+* Premature flight termination at 57hPa, profile believed to be OK otherwise
+* Computed correction factor was 1.4 but not applied
+* Residual Ozone was 93
+
+#AUXILIARY_DATA
+MeteoSonde,ib1,ib2,PumpRate,BackgroundCorr,SampleTemperatureType,MinutesGroundO3
+SPCECC-VaisalaRSA11-VaisalaRS80(GPS),,0.06,27.3,constant_ib2,pump
+
+#PROFILE
+Pressure,O3PartialPressure,Temperature,WindSpeed,WindDirection,LevelCode,Duration,GPHeight,RelativeHumidity,SampleTemperature
+1003,2.89,3,18,265
+1000,2.9,3
+967,3.06,0
+896,2.95,-7
+850,2.83,-9
+798,2.85,-11
+700,2.62,-16
+681,2.5,-16
+579,2.18,-25
+556,2.01,-27
+500,2.31,-32
+412,1.61,-39
+394,1.64,-41
+300,1.1,-57
+200,6.71,-54
+186,7.4,-56
+170,7.37,-54
+150,9.81,-54
+134,17.4,-55
+122,11.1,-53
+106,13.7,-54
+100,13.4,-53
+96.8,12.8,-53
+88.2,14.5,-54
+80.3,10.8,-54
+76.6,11,-55
+70,9.7,-56
+57.7,12.5,-57
