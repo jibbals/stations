@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
-
+# File input output for ozone stations work 
+#
 ########################
 ######## Imports #######
 ########################
 
-import numpy as _np
+import numpy as np
 from datetime import datetime
 from datetime import timedelta
 
@@ -14,12 +14,20 @@ from os import walk as _walk
 import linecache as _linecache
 # CSV Library for reading/writing CSV files
 from pandas.io.parsers import read_csv as _preadcsv
+import netCDF4 as nc
+import csv
+
+# local module, converts GC tau to datetimes
+from tau_to_date import tau_to_date as ttd
 
 ########################
 ######## Globals #######
 ########################
+
+_Datadir='./data/'
 _sondesdir='./data/sondes/'
 _sitenames = ['Davis','Macquarie','Melbourne']
+_Datafiles=[ _Datadir+d+'.nc' for d in _sitenames]
 _sondesdirs=[_sondesdir+s for s in _sitenames]
 
 # method to find all the csv paths:
@@ -41,6 +49,106 @@ def _list_files():
 # davis, macquarie, melbourne data locations
 _sondecsvs=_list_files()
 # now _sondecsvs[0] is all the davis csv files.. etc
+
+def read_GC_station(station):
+    '''
+    Read a (GEOS-CHEM) station file, and the met field TROPP
+    Return dictionary:
+        AIRDEN: molecules/cm3
+        PSURF: hpa
+        Tau: Hrs since sliced bread
+        O3: ppb, (GEOS_CHEM SAYS PPBV)
+        BXHEIGHT: m
+        Pressure: hPa
+        # non station file stuff(added here)
+        TropopausePressure: hPa #(interpolated from .a3 met fields)
+        O3Density: molecules/cm3
+        O3TropColumn: molecules/cm2
+        TropopauseAltitude: m
+        Altitudes: m
+        PMids: hPa
+        PEdges: hPa
+        Date: datetime structure of converted Taus
+        Station: string with stn name and lat/lon
+    '''
+    path=_Datafiles[station]
+    fh=nc.Dataset(path, mode='r')
+    stndict=dict()
+    for key in ['Tau','Pressure','O3','PSURF','BXHEIGHT','AIRDEN']:
+        stndict[key]=fh.variables[key][...]
+    ## Station name and lat/lon
+    stationstr="%s [%3.2fN, %3.2fE]"%(fh.station, float(fh.latitude), float(fh.longitude))
+    troppfile= _Datadir+fh.station.lower()+'_2x25GEOS5_TROPP.csv'
+    fh.close()
+    
+    # Density Column = VMR * AIRDEN [ O3 molecules/cm3 ]
+    stndict['O3Density']= stndict['O3'] * 1e-9 * stndict['AIRDEN']
+    
+    # Get Date from Tau
+    stndict['Date'] = np.array(ttd(stndict['Tau']))
+    stndict['Station'] = stationstr
+    
+    # PSURF is pressure at bottom of boxes
+    Pressure_bottoms=stndict['PSURF'][:,:]
+    n_t=len(stndict['Tau'])
+    n_y=72
+    
+    # geometric pressure mid points
+    pedges=np.zeros( [n_t, n_y+1] )
+    pedges[:, 0:n_y]=Pressure_bottoms
+    pmids = np.sqrt(pedges[:, 0:n_y] * pedges[:, 1:(n_y+1)]) # geometric mid point
+    
+    # Altitude mid points from boxheights
+    Altitude_mids=np.cumsum(stndict['BXHEIGHT'],axis=1)-stndict['BXHEIGHT']/2.0
+    
+    # Read station tropopause level:
+    with open(troppfile) as inf:
+        tropps=np.array(list(csv.reader(inf)))
+    tropTaus=tropps[:,0].astype(float) # trops are every 3 hours, so we will only want half
+    tropPres=tropps[:,1].astype(float)
+    TPP = np.interp(stndict['Tau'], tropTaus, tropPres)
+    stndict['TropopausePressure']=TPP
+    
+    # Tropospheric O3 Column!!!!
+    TVC = []
+    Atrop=[]
+    TPL = []
+    # For each vertical column of data
+    for i in range(n_t):
+        # tpinds = tropospheric part of column
+        tpinds = np.where(pedges[i,:] > TPP[i])[0]
+        tpinds = tpinds[0:-1] # drop last edge
+        
+        # Which layer has the tropopause
+        TPLi=tpinds[-1]+1
+        TPL.append(TPLi) # tropopause level
+        
+        # Fraction of TP level which is tropospheric
+        pb, pt= pedges[i,TPLi], pedges[i,TPLi+1]
+        frac= (pb - TPP[i])/(pb-pt)
+        assert (frac>0) & (frac < 1), 'frac is wrong, check indices of TROPP'
+        
+        ## Find Trop VC of O3
+        # sum of (molecules/cm3 * height(cm)) in the troposphere
+        TVCi=np.sum(stndict['O3Density'][i,tpinds]*stndict['BXHEIGHT'][i,tpinds]*100)
+        TVCi=TVCi+ frac*stndict['O3Density'][i,TPLi]*stndict['BXHEIGHT'][i,TPLi]*100
+        TVC.append(TVCi)
+        
+        ## Altitude of trop
+        #
+        Atropi=np.sum(stndict['BXHEIGHT'][i, tpinds])
+        Atropi = Atropi+frac*stndict['BXHEIGHT'][i, TPLi]
+        Atrop.append(Atropi)
+        
+    stndict['O3TropColumn']=np.array(TVC)
+    stndict['TropopauseAltitude']=np.array(Atrop)
+    stndict['TropopauseLevel']=np.array(TPL)
+    # Add pressure info
+    stndict['PEdges']=pedges
+    stndict['PMids']=pmids
+    stndict['Altitudes']=Altitude_mids
+    return(stndict)
+
 
 # Sonde data class, created to hold stuff
 #
@@ -98,7 +206,7 @@ class sondes:
         return di
     def get_profile(self, date):
         # return (gph, o3ppbv, temp, rh, dates, tp, tplr, tpo3) profile
-        if _np.size(self.tp) < 2:
+        if np.size(self.tp) < 2:
             self._set_tps()
         # find closest matching date
         closest = sorted(self.dates, key = lambda d : abs( d - date))[0]
@@ -135,13 +243,13 @@ class sondes:
         return(fig)
     def _set_tps(self):
         
-        polar = (_np.abs(self.lat) > 60)
+        polar = (np.abs(self.lat) > 60)
 
         #for each profile
         ns= len(self.dates)
-        for si in _np.arange(0,ns):
-            ppbv=_np.array(self.o3ppbv[si,:])
-            Z=_np.array(self.gph[si,:])/1e3
+        for si in np.arange(0,ns):
+            ppbv=np.array(self.o3ppbv[si,:])
+            Z=np.array(self.gph[si,:])/1e3
             tpo3=-1.0
 
             ## FIRST
@@ -151,25 +259,25 @@ class sondes:
             
             # for each dvmr/dz gt 60 with ppbv > 80 check the .5 to 2 k higher values are gt 110
             # check ranges:
-            z1=_np.where(dmrdz>60)[0]
-            z2=_np.where(ppbv[0:-2] > 80)[0]
-            testrange=_np.intersect1d(z1,z2)
+            z1=np.where(dmrdz>60)[0]
+            z2=np.where(ppbv[0:-2] > 80)[0]
+            testrange=np.intersect1d(z1,z2)
             upper = [ 2.0, 1.5 ][polar]
-            if _np.size(testrange) < 2 or _np.size(Z) < 2 :
+            if np.size(testrange) < 2 or np.size(Z) < 2 :
                 self.tpo3.append(-1)
                 self.tplr.append(-1)
                 continue
             for ind in testrange:
                 
                 alt=Z[ind]
-                #print "shape(Z):", _np.shape(Z)
+                #print "shape(Z):", np.shape(Z)
                 #print "ind:", ind
                 #print "testrange:", testrange
                 #print "alt:", alt
-                if _np.isnan(alt) : continue
-                z1=_np.where(Z >= (alt+0.5))[0]
-                z2=_np.where(Z <= (alt+upper))[0]
-                checks = _np.intersect1d(z1,z2)
+                if np.isnan(alt) : continue
+                z1=np.where(Z >= (alt+0.5))[0]
+                z2=np.where(Z <= (alt+upper))[0]
+                checks = np.intersect1d(z1,z2)
                 #print "checks:", checks
                 checks=list(checks)
                 ##if all the indices in our check range are gt 110 ppbv we are finished
@@ -183,26 +291,26 @@ class sondes:
             tplr=-1.0
             rate=-2.0
             minh=2.0
-            temp=_np.array(self.temp[si,:])
+            temp=np.array(self.temp[si,:])
             temp=temp[Z > minh]
             Z=Z[Z>minh]
             lapse = (temp[0:-1]-temp[1:])/(Z[0:-1]-Z[1:])
-            lapse = _np.append(lapse,0)
+            lapse = np.append(lapse,0)
             # lapse rate should be greater than -2 over two kilometers
-            testrange=_np.where(lapse > rate)[0]
+            testrange=np.where(lapse > rate)[0]
             for ind in testrange[0:-1]:
                 alt=Z[ind]
-                z1=_np.where(Z > alt)[0]
-                z2=_np.where(Z < (alt+2.0))[0]
-                checks =_np.intersect1d(z1,z2) 
+                z1=np.where(Z > alt)[0]
+                z2=np.where(Z < (alt+2.0))[0]
+                checks =np.intersect1d(z1,z2) 
                 
-                if _np.mean(lapse[checks]) > rate :
+                if np.mean(lapse[checks]) > rate :
                     tplr=alt
                     break
             self.tplr.append(tplr)
         ## FINALLY
         # tp is minimum of lapse rate and ozone tropopause
-        self.tp = _np.minimum(self.tplr,self.tpo3).tolist()
+        self.tp = np.minimum(self.tplr,self.tpo3).tolist()
 
     def get_seasonal(self):
         '''
@@ -220,7 +328,7 @@ class sondes:
         ndat.lon=self.lon
         ndat.alt=self.alt
         ndat.dates=['J','F','M','A','M','J','J','A','S','O','N','D']
-        ndat.o3pp = _np.ndarray([12,new_profile_points])
+        ndat.o3pp = np.ndarray([12,new_profile_points])
         
         # create seasonal averages of other variables 
         #for each month
@@ -230,10 +338,10 @@ class sondes:
               
             #get average partial pressure
             # for now just surface pp
-            ndat.o3pp[i,0]= _np.nanmean(self.o3pp[mi,0])
+            ndat.o3pp[i,0]= np.nanmean(self.o3pp[mi,0])
             
             # average of tps:
-            #ndat.tps[i] = _np.nanmean(tps[mi])
+            #ndat.tps[i] = np.nanmean(tps[mi])
             
     
         return(ndat)
@@ -318,7 +426,7 @@ def read_site(site=0):
     
     # array to build up with data
     sondescount=len(_sondecsvs[site])
-    sondesdata=_np.ndarray([5,sondescount,_profile_points])+_np.NaN
+    sondesdata=np.ndarray([5,sondescount,_profile_points])+np.NaN
     
     # location from csv:
     locline=_linecache.getline(_sondecsvs[site][0], 22)

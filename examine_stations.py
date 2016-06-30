@@ -10,130 +10,14 @@ matplotlib.use('Agg')
 
 # plotting, reading ncdf, csv, maths
 import matplotlib.pyplot as plt
-import netCDF4 as nc
-import csv
-import numpy as np
-
-# these two help plot over datetimes
-#from matplotlib.dates import date2num as d2n
 from matplotlib.dates import DateFormatter
-from datetime import datetime
-
-# local module, converts GC tau to datetimes
-from tau_to_date import tau_to_date as ttd
+import numpy as np
 
 # Local module for reading sonde dataset
 import fio
 
 # set all fonts to 15
 matplotlib.rcParams.update({'font.size': 15})
-
-_Datadir='./data/'
-_Datafiles=[ _Datadir+d for d in ['Davis.nc','Macquarie.nc', 'Melbourne.nc']]
-
-# directory and file listing
-_sondesdir='./data/sondes/'
-_sondesdirs=[_sondesdir+ site for site in ['Davis/','Macquarie/','Melbourne/']]
-_sitenames = ['Davis','Macquarie','Melbourne']
-
-def read_station(station):
-    '''
-    Read a (GEOS-CHEM) station file, and the met field TROPP
-    Return dictionary:
-        AIRDEN: molecules/cm3
-        PSURF: hpa
-        Tau: Hrs since sliced bread
-        O3: ppb, (GEOS_CHEM SAYS PPBV)
-        BXHEIGHT: m
-        Pressure: hPa
-        # non station file stuff(added here)
-        TropopausePressure: hPa #(interpolated from .a3 met fields)
-        O3Density: molecules/cm3
-        O3TropColumn: molecules/cm2
-        TropopauseAltitude: m
-        Altitudes: m
-        PMids: hPa
-        PEdges: hPa
-        Date: datetime structure of converted Taus
-        Station: string with stn name and lat/lon
-    '''
-    path=_Datafiles[station]
-    fh=nc.Dataset(path, mode='r')
-    stndict=dict()
-    for key in ['Tau','Pressure','O3','PSURF','BXHEIGHT','AIRDEN']:
-        stndict[key]=fh.variables[key][...]
-    ## Station name and lat/lon
-    stationstr="%s [%3.2fN, %3.2fE]"%(fh.station, float(fh.latitude), float(fh.longitude))
-    troppfile= _Datadir+fh.station.lower()+'_2x25GEOS5_TROPP.csv'
-    fh.close()
-    
-    # Density Column = VMR * AIRDEN [ O3 molecules/cm3 ]
-    stndict['O3Density']= stndict['O3'] * 1e-9 * stndict['AIRDEN']
-    
-    # Get Date from Tau
-    stndict['Date'] = np.array(ttd(stndict['Tau']))
-    stndict['Station'] = stationstr
-    
-    # PSURF is pressure at bottom of boxes
-    Pressure_bottoms=stndict['PSURF'][:,:]
-    n_t=len(stndict['Tau'])
-    n_y=72
-    
-    # geometric pressure mid points
-    pedges=np.zeros( [n_t, n_y+1] )
-    pedges[:, 0:n_y]=Pressure_bottoms
-    pmids = np.sqrt(pedges[:, 0:n_y] * pedges[:, 1:(n_y+1)]) # geometric mid point
-    
-    # Altitude mid points from boxheights
-    Altitude_mids=np.cumsum(stndict['BXHEIGHT'],axis=1)-stndict['BXHEIGHT']/2.0
-    
-    # Read station tropopause level:
-    with open(troppfile) as inf:
-        tropps=np.array(list(csv.reader(inf)))
-    tropTaus=tropps[:,0].astype(float) # trops are every 3 hours, so we will only want half
-    tropPres=tropps[:,1].astype(float)
-    TPP = np.interp(stndict['Tau'], tropTaus, tropPres)
-    stndict['TropopausePressure']=TPP
-    
-    # Tropospheric O3 Column!!!!
-    TVC = []
-    Atrop=[]
-    TPL = []
-    # For each vertical column of data
-    for i in range(n_t):
-        # tpinds = tropospheric part of column
-        tpinds = np.where(pedges[i,:] > TPP[i])[0]
-        tpinds = tpinds[0:-1] # drop last edge
-        
-        # Which layer has the tropopause
-        TPLi=tpinds[-1]+1
-        TPL.append(TPLi) # tropopause level
-        
-        # Fraction of TP level which is tropospheric
-        pb, pt= pedges[i,TPLi], pedges[i,TPLi+1]
-        frac= (pb - TPP[i])/(pb-pt)
-        assert (frac>0) & (frac < 1), 'frac is wrong, check indices of TROPP'
-        
-        ## Find Trop VC of O3
-        # sum of (molecules/cm3 * height(cm)) in the troposphere
-        TVCi=np.sum(stndict['O3Density'][i,tpinds]*stndict['BXHEIGHT'][i,tpinds]*100)
-        TVCi=TVCi+ frac*stndict['O3Density'][i,TPLi]*stndict['BXHEIGHT'][i,TPLi]*100
-        TVC.append(TVCi)
-        
-        ## Altitude of trop
-        #
-        Atropi=np.sum(stndict['BXHEIGHT'][i, tpinds])
-        Atropi = Atropi+frac*stndict['BXHEIGHT'][i, TPLi]
-        Atrop.append(Atropi)
-        
-    stndict['O3TropColumn']=np.array(TVC)
-    stndict['TropopauseAltitude']=np.array(Atrop)
-    stndict['TropopauseLevel']=np.array(TPL)
-    # Add pressure info
-    stndict['PEdges']=pedges
-    stndict['PMids']=pmids
-    stndict['Altitudes']=Altitude_mids
-    return(stndict)
 
 def event_profiles(station=2, data=None):
     '''
@@ -143,7 +27,7 @@ def event_profiles(station=2, data=None):
     '''
     ## First read the station data
     if data is None:
-        data=read_station(station)
+        data=fio.read_GC_station(station)
     stn_name=data['Station'].split(' ')[0]
     dates=data['Date']
     
@@ -152,7 +36,7 @@ def event_profiles(station=2, data=None):
     SO3s  = sondes.o3ppbv # [time, altitude]
     SAlts = sondes.gph/1000 # [time, altitude] GPH in km
     eventdates=sondes.edates # this info is read from a csv I create in IDL
-    
+    print("saving profiles for station %s"%stn_name)
     ## At each event date plot the profiles side by side.
     for date in eventdates:
         outfile='images/eventprofiles/%s/%s_%s.ps'%(stn_name,stn_name, date.strftime("%Y%m%d"))
@@ -196,14 +80,14 @@ def event_profiles(station=2, data=None):
 def time_series(outfile='images/StationSeries.png'):
     '''
     Plot timeseries for each station
-    TODO: Also show dobson units...
+    TODO: Also show GC timeseries
     '''
     f3, f3axes = plt.subplots(3, 1, sharex=True, figsize=(14,10))
     f3axes[2].set_xlabel('Date')
     f3axes[1].set_ylabel('Ozone molecules/cm2')
     
     # read the three files into a list
-    files=[ read_station(f) for f in range(3) ]
+    files=[ fio.read_GC_station(f) for f in range(3) ]
     
     # for each station do this
     for fh, f3ax, i in zip(files, f3axes, range(len(files))):
@@ -246,7 +130,7 @@ def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     If hour is set, only consider values at that hour (0, 6, 12, or 18)
     '''
     # read site data
-    sites = [ read_station(p) for p in range(3) ]
+    sites = [ fio.read_GC_station(p) for p in range(3) ]
     
     # Set up plot
     f = plt.figure(figsize=(16,9))
@@ -301,7 +185,7 @@ def monthly_profiles(hour=None):
     '''
     
     # read site data
-    sites = [ read_station(p) for p in range(3) ]
+    sites = [ fio.read_GC_station(p) for p in range(3) ]
     
     #for each station do this
     for site in sites:
@@ -376,10 +260,9 @@ def monthly_profiles(hour=None):
 if __name__ == "__main__":
     print ("Running")
     
-    event_profiles()
+    [event_profiles(s) for s in [0,1,2]]
     #time_series()
     #yearly_cycle()
     #monthly_profiles()
     #[monthly_profiles(hour=h) for h in [0,6,12,18] ]
-    
     
