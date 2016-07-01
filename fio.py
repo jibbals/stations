@@ -171,12 +171,15 @@ class sondes:
         self.tpo3 = [] #ozone tropopause
         self.tplr = [] # lapse rate tropopause
         self.tp = [] # minimum tropopause
+        self.tpinds = [] # index of min tropopause
+        self.tropvc = [] # tropospheric vertical column molecs/cm2
         
         # the following will have 2 dims: [dates,heights]
         self.press = 0 # heights(hPa) 
         self.gph = 0 # heights(m)
         self.o3pp = 0 # partial pressure(mPa)
         self.o3ppbv = 0 # ppbv[dates,heights]
+        self.o3dens = 0 # molecules/cm3
         self.rh = 0 # rel humidity
         self.temp = 0 # temperature(Celcius)
         # extras
@@ -311,6 +314,12 @@ class sondes:
         ## FINALLY
         # tp is minimum of lapse rate and ozone tropopause
         self.tp = np.minimum(self.tplr,self.tpo3).tolist()
+        for i in range(ns):
+            Z=np.array(self.gph[i,:])/1e3
+            if self.tp[i]  == -1:
+                self.tpinds.append(np.NaN)
+            else:
+                self.tpinds.append(np.where(Z == self.tp[i])[0][0])
 
     def get_seasonal(self):
         '''
@@ -345,6 +354,47 @@ class sondes:
             
     
         return(ndat)
+    
+    def _set_density(self):
+        '''
+        PV=nRT:
+        n/V [moles/cm3] = P/RT
+        n/V * N_av [molecules/cm3] = P*N_av/RT
+        n_O3 / V * N_av = P_O3 * N_av/RT
+        
+        P is pressure [hPa]
+        P_O3 = vmr * P
+        N_av = avocado's number [molecules/mole]
+        R = gas constant [ cm3 hPa / ( K mole ) ]
+        T = Temperature [K]
+        
+        Tropospheric VC= sum up to TP of (density * height)
+        '''
+        R=8.3144621e4 # [ cm3 hPa / K / mole ]
+        N_av=6.0221409e+23 # Avegadro
+        vmr=self.o3ppbv * 1e-9 # ppb to vmr
+        P = np.array(self.press) # hPa
+        T = np.array(self.temp) + 273.15 # celcius to Kelvin        
+        self.o3dens = vmr * P / R / T * N_av
+        
+        # vertical column profile [molecs/cm2] = dens[molecs/cm3]*height[cm]
+        Z=self.gph * 100
+        edgesshape=list(Z.shape)
+        edgesshape[1]+=1
+        Zedges=np.zeros(edgesshape)
+        Zedges[:,0] = Zedges[:,0] + self.alt*100
+        Zedges[:,1:-1] = (Z[:, 0:-1] + Z[:, 1:]) / 2.0
+        Zedges[:,-1] =Z[:,-1]
+        # height of each vertical level
+        Zheights= Zedges[:,1:]-Zedges[:, 0:-1] 
+        vcp = self.o3dens * Zheights
+        for i in range(len(self.dates)):
+            tpind=self.tpinds[i]
+            if tpind is np.NaN:
+                self.tropvc.append(np.NaN)
+            else:
+                # doesn't include tropopause layer
+                self.tropvc.append( np.nansum( vcp[i, 0:tpind] ) )
         
     def _set_events(self):
         '''
@@ -455,5 +505,6 @@ def read_site(site=0):
     snd.rh=sondesdata[4]
     snd.o3ppbv = snd.o3pp/snd.press*1.0e-5 *1.0e9
     snd._set_tps()
+    snd._set_density()
     snd._set_events()
     return(snd)

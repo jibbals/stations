@@ -12,6 +12,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 import numpy as np
+from datetime import datetime
 
 # Local module for reading sonde dataset
 import fio
@@ -22,8 +23,7 @@ matplotlib.rcParams.update({'font.size': 15})
 def event_profiles(station=2, data=None):
     '''
     Get O3, altitude, pressure profile at specific date.
-    Returns: O3, Altitude_mids, Pressure_mids, Pressure_edges
-    
+    Returns: O3, Altitude_mids, Pressure_mids, Pressure_edges  
     '''
     ## First read the station data
     if data is None:
@@ -80,7 +80,7 @@ def event_profiles(station=2, data=None):
 def time_series(outfile='images/StationSeries.png'):
     '''
     Plot timeseries for each station
-    TODO: Also show GC timeseries
+    TODO: Also show Sonde timeseries
     '''
     f3, f3axes = plt.subplots(3, 1, sharex=True, figsize=(14,10))
     f3axes[2].set_xlabel('Date')
@@ -88,21 +88,29 @@ def time_series(outfile='images/StationSeries.png'):
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
+    o3sondes = [fio.read_site(s) for s in range(3) ]
     
     # for each station do this
-    for fh, f3ax, i in zip(files, f3axes, range(len(files))):
+    # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
+    for gc, os, f3ax, i in zip(files, o3sondes, f3axes, range(len(files))):
         ## grab variables
         
         # Ozone data array [time] in molecules/cm2
-        data=fh['O3TropColumn']
+        data=gc['O3TropColumn']
+        sdata=np.array(os.tropvc)
         
         # create string title and turn tau's into matplotlib date numbers
-        station=fh['Station']
-        dates = fh['Date']
+        station=gc['Station']
+        dates = gc['Date']
+        sdates= np.array(os.dates)
         
         # plot time series for each station
-        f3ax.plot_date(dates, data[:])
+        f3ax.plot_date(dates, data[:], '-b', label='GEOS-Chem')
+        f3ax.plot_date(sdates, sdata[:], 'k*', label='sondes')
         f3ax.set_title(station)
+        if i == 0: 
+            f3ax.legend()
+            f3ax.set_xlim([datetime(2003,9,1),datetime(2014,3,1)])
         
         # add dobson units
         newax=f3ax.twinx()
@@ -110,8 +118,9 @@ def time_series(outfile='images/StationSeries.png'):
         newylim= [1/2.69e16 * oldlim for oldlim in f3ax.get_ylim()]
         newax.set_ylim(newylim)
     
+    
     # set plot titles
-    f3.suptitle('Tropospheric ozone column from GEOS-Chem',fontsize=21)
+    f3.suptitle('Tropospheric ozone column',fontsize=21)
     
     # set xticks nicely
     f3axes[2].xaxis.set_major_formatter( DateFormatter('%Y-%m') )
@@ -260,8 +269,8 @@ def monthly_profiles(hour=None):
 if __name__ == "__main__":
     print ("Running")
     
-    [event_profiles(s) for s in [0,1,2]]
-    #time_series()
+    #[event_profiles(s) for s in [0,1,2]]
+    time_series()
     #yearly_cycle()
     #monthly_profiles()
     #[monthly_profiles(hour=h) for h in [0,6,12,18] ]
