@@ -22,8 +22,10 @@ matplotlib.rcParams.update({'font.size': 15})
 
 def event_profiles(station=2, data=None):
     '''
-    Get O3, altitude, pressure profile at specific date.
-    Returns: O3, Altitude_mids, Pressure_mids, Pressure_edges  
+    Plot all the modelled profiles alongside sonde profiles for event dates
+    inputs: station=2, data=None
+        station: 0,1,or 2 for davis,mac,melb
+        data: if the model data is already read, can be passed in as argument
     '''
     ## First read the station data
     if data is None:
@@ -79,8 +81,7 @@ def event_profiles(station=2, data=None):
     
 def time_series(outfile='images/StationSeries.png'):
     '''
-    Plot timeseries for each station
-    TODO: Also show Sonde timeseries
+    Plot timeseries for each station, also shows sonde measurements
     '''
     f3, f3axes = plt.subplots(3, 1, sharex=True, figsize=(14,10))
     f3axes[2].set_xlabel('Date')
@@ -135,7 +136,7 @@ def time_series(outfile='images/StationSeries.png'):
 
 def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     '''
-    Show yearly cycle of surface ozone for our three sites
+    Show yearly cycle of tropospheric ozone for our three sites
     If hour is set, only consider values at that hour (0, 6, 12, or 18)
     '''
     # read site data
@@ -186,7 +187,7 @@ def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     print("Image saved to %s"%outfile)
     plt.close(f)
 
-def monthly_profiles(hour=None):
+def monthly_GC_profiles(hour=None):
     '''
     Profile mean and std deviation for each month for each site
     If you only want to consider a particular hour then set the hour parameter
@@ -266,12 +267,94 @@ def monthly_profiles(hour=None):
         print("Image saved to %s"%outfile)
         plt.close(f)
 
+def monthly_sonde_profiles():
+    '''
+    Profile mean and std deviation for each month for each site
+    '''
+    
+    # read site data
+    o3sondes = [ fio.read_site(p) for p in range(3) ]
+    
+    #for each station do this
+    for site in o3sondes:
+        
+        # Set up plot
+        f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
+        axes[3,1].set_xlabel('Ozone (ppb)')
+        xlim=[0,125]
+        axes[3,1].set_xlim(xlim)
+        axes[1,0].set_ylabel('Altitude (km)')
+        ylim=[0,14]
+        axes[1,0].set_ylim(ylim)
+        
+        # Grab Ozone
+        O3 = np.array(site.o3ppbv)
+        # metres to kilometres
+        TP = np.array(site.tp) # TP is already in km
+        Z  = np.array(site.gph) / 1000.0 
+        Znew= np.linspace(0,14,100)
+        # need to vertically bin the O3 profiles,
+        # interpolated at 100 points up to 14km
+        means=np.zeros([12,100])
+        stds =np.zeros([12,100])
+        TPm = np.zeros(12)
+        TPs = np.zeros(12)
+        counts=np.zeros(12)
+        
+        # bin data into 12 months
+        allmonths=np.array([ d.month for d in site.dates ])
+        for month in range(12):
+            inds=np.where(allmonths == month+1)[0]
+            n = len(inds)
+            # each profile needs to be interpolated up to 14km
+            profs=np.zeros([n,100])
+            for i in range(n):
+                profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:])
+            means[month,:]=np.nanmean(profs,axis=0)
+            stds[month,:] =np.nanstd(profs,axis=0)
+            TPm[month] = np.nanmean(TP[inds])
+            TPs[month] = np.nanstd(TP[inds])
+            counts[month]=n
+        
+        # plot the mean profiles and shade the area of 1 stdev
+        titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
+        months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
+        # colour each season!
+        colours=['red','magenta','blue','green']
+        for i in range(4):
+            for j in range(3):
+                plt.sca(axes[i,j]) # set current axis
+                mind=months[i,j] # which month are we plotting
+                X=means[mind,:]
+                Xl=X-stds[mind,:]
+                Xr=X+stds[mind,:]
+                plt.plot(X, Znew , linewidth=3, color='k')
+                plt.fill_betweenx(Znew, Xl, Xr, alpha=0.3, color=colours[i])
+                plt.title(titles[i,j])
+                Y=TPm[mind]
+                Ye=TPs[mind]
+                plt.plot(xlim, [Y, Y], 'k--', linewidth=2 )
+                plt.fill_between(xlim, [Y+Ye,Y+Ye], [Y-Ye,Y-Ye], alpha=0.2, color='k')
+                # add count text to upper corner
+                plt.text(.75*xlim[1], .5, "N=%d"%counts[mind])
+        
+        # set title, and layout, then save figure
+        stn_name=site.name
+        f.suptitle("Monthly averaged profiles from ozonesondes over "+stn_name)
+        outfile='images/%s_sonde_monthprofiles.png'%stn_name
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.94)
+        plt.savefig(outfile)
+        print("Image saved to %s"%outfile)
+        plt.close(f)
+
 if __name__ == "__main__":
     print ("Running")
     
     #[event_profiles(s) for s in [0,1,2]]
-    time_series()
+    #time_series()
     #yearly_cycle()
-    #monthly_profiles()
+    #monthly_GC_profiles()
+    monthly_sonde_profiles()
     #[monthly_profiles(hour=h) for h in [0,6,12,18] ]
     

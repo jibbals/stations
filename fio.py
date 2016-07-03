@@ -168,9 +168,9 @@ class sondes:
         self.edates= [] # event dates
         self.edatedeltas= [] # sonde datetime - event datetime
         self.einds = [] # event indices
-        self.tpo3 = [] #ozone tropopause
-        self.tplr = [] # lapse rate tropopause
-        self.tp = [] # minimum tropopause
+        self.tpo3 = [] #ozone tropopause (km)
+        self.tplr = [] # lapse rate tropopause (km)
+        self.tp = [] # minimum tropopause (km)
         self.tpinds = [] # index of min tropopause
         self.tropvc = [] # tropospheric vertical column molecs/cm2
         
@@ -252,7 +252,7 @@ class sondes:
         ns= len(self.dates)
         for si in np.arange(0,ns):
             ppbv=np.array(self.o3ppbv[si,:])
-            Z=np.array(self.gph[si,:])/1e3
+            Z=np.array(self.gph[si,:]) / 1e3
             tpo3=-1.0
 
             ## FIRST
