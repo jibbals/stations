@@ -44,6 +44,8 @@ def _list_files():
                     if 'lowres' in fpath: continue
                     if (fname[0] != '.') and (fname[-4:] == '.csv') :
                         sondecsvs[dind].append(fpath+'/'+fname)
+        uniqs=set(sondecsvs[dind])
+        sondecsvs[dind] = list(uniqs)
         sondecsvs[dind].sort()
     return(sondecsvs)
 # davis, macquarie, melbourne data locations
@@ -149,6 +151,29 @@ def read_GC_station(station):
     stndict['Altitudes']=Altitude_mids
     return(stndict)
 
+def read_GC_global():
+    '''
+    Read the GEOS-CHEM dataset, and the met field TROPP
+    Return dictionary:
+        AIRDEN: molecules/cm3
+        PSURF: hpa
+        Tau: Hrs since sliced bread
+        O3: ppb, (GEOS_CHEM SAYS PPBV)
+        BXHEIGHT: m
+        Pressure: hPa
+        # non station file stuff(added here)
+        TropopausePressure: hPa #(interpolated from .a3 met fields)
+        O3Density: molecules/cm3
+        O3TropColumn: molecules/cm2
+        TropopauseAltitude: m
+        Altitudes: m
+        PMids: hPa
+        PEdges: hPa
+        Date: datetime structure of converted Taus
+        Station: string with stn name and lat/lon
+    '''
+    #TODO: implement
+    return(0)
 
 # Sonde data class, created to hold stuff
 #
