@@ -22,7 +22,7 @@ import fio
 # set all fonts to 15
 matplotlib.rcParams.update({'font.size': 15})
 
-def anomaly_corellation(outfile='images/corellations_anomalies.png'):
+def anomaly_correlation(outfile='images/correlations_anomalies.png'):
     '''
     plot correlation of monthly average anomalies between sondes and GC where both occur on the same day.
     '''
@@ -33,18 +33,16 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
     o3sondes = [fio.read_site(s) for s in range(3) ]
     
     f3, f3axes = plt.subplots(3, 1, figsize=(12,16))
-    f3axes[2].set_xlabel('Sonde tropospheric O3 relative anomaly')#(molecules/cm2)')
-    f3axes[1].set_ylabel('GEOS-Chem tropospheric O3 relative anomaly')#(molecules/cm2)')
-    #xlims=[[1e17,1e18], [1e17,1e18], [1e17,1.5e18]]
-    #ylims=[[1e17,1.5e18], [1e17,1.5e18], [1e17, 2e18]]
+    f3axes[2].set_xlabel('Sonde tropospheric O3 relative anomaly')
+    f3axes[1].set_ylabel('GEOS-Chem tropospheric O3 relative anomaly')
+    ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
     
     # set up colorbar
-    cmap=plt.get_cmap('rainbow', 12)
+    cmap=plt.get_cmap('gist_rainbow', 4)
     
     # for each station do this
     # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
     for gc, os, f3ax, i in zip(files, o3sondes, f3axes, range(len(files))):
-        #xlim,ylim=xlims[i],ylims[i]
         xlim,ylim=[-1,1],[-1.5,1.5]
         plt.sca(f3ax) # set current axis
         ## grab variables
@@ -73,7 +71,7 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
         osh0dates= [datetime(d.year,d.month,d.day,0,0) for d in sdates]
         Yos=[]
         Ygc=[]
-        mnth=[]
+        season=[]
         for si, sdate in enumerate(osh0dates):
             if sdate in dates:
                 ind=np.where(dates == sdate)[0]
@@ -87,13 +85,12 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
                 mind=sdate.month-1
                 Yos.append((sdata[si]-smean[mind])/smean[mind])
                 Ygc.append((data[ind]-mean[mind])/mean[mind])
-                mnth.append(sdate.month)
-        
+                season.append(ssnmap[sdate.month])
         
         Yos,Ygc = np.array(Yos),np.array(Ygc)
         # plot correlation coefficient
         slope,intercept,r_value,p_value,std_err= stats.linregress(Yos,Ygc)
-        colors=cmap(mnth)
+        colors=cmap(season)
         f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
         f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
         #f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
@@ -117,13 +114,13 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
     cbar_ax = f3.add_axes([0.9, 0.25, 0.04, 0.5])
     
     # add colourbar, force the stupid thing to be the same as the one used in plotting...
-    sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=1,vmax=12))
+    sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=1,vmax=4))
     sm._A=[]
     cb=f3.colorbar(sm,cax=cbar_ax)
     
     # set the 12 ticks nicely and roughly centred
-    cb.set_ticks(np.linspace(1,12,12) + (6.5-np.linspace(1,12,12))/12.)
-    cb.set_ticklabels(['J','F','M','A','M','J','J','A','S','O','N','D'])
+    cb.set_ticks(np.linspace(1,4,4) + (2.5-np.linspace(1,4,4))/4.)
+    cb.ax.set_yticklabels(['Summer','Autumn','Winter','Spring'],rotation=90)
     #cb.set_label('month')
     
     # save then close plots
@@ -132,7 +129,7 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
     print("Image saved to %s"%outfile)
     plt.close(f3)
 
-def corellation(outfile='images/corellations.png'):
+def correlation(outfile='images/correlations.png'):
     '''
     plot correlation between sondes and GC where both occur on the same day.
     '''
@@ -147,9 +144,10 @@ def corellation(outfile='images/corellations.png'):
     f3axes[1].set_ylabel('GEOS-Chem tropospheric O3 (molecules/cm2)')
     xlims=[[1e17,1e18], [1e17,1e18], [1e17,1.5e18]]
     ylims=[[1e17,1.5e18], [1e17,1.5e18], [1e17, 2e18]]
+    ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
     
     # set up colorbar
-    cmap=plt.get_cmap('rainbow', 12)
+    cmap=plt.get_cmap('gist_rainbow', 4)
     
     # for each station do this
     # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
@@ -171,7 +169,7 @@ def corellation(outfile='images/corellations.png'):
         osh0dates= [datetime(d.year,d.month,d.day,0,0) for d in sdates]
         Yos=[]
         Ygc=[]
-        mnth=[]
+        season=[]
         for sdate, si in zip(osh0dates, range(len(osh0dates))):
             if sdate in dates:
                 ind=np.where(dates == sdate)[0]
@@ -183,17 +181,13 @@ def corellation(outfile='images/corellations.png'):
                 #print(si, sdates[si])
                 Yos.append(sdata[si])
                 Ygc.append(data[ind])
-                mnth.append(sdate.month)
+                season.append(ssnmap[sdate.month])
         
-        # Instead of data, look at correlation of difference from the monthly mean
-        #TODO:
         Yos,Ygc = np.array(Yos),np.array(Ygc)
         # plot correlation coefficient
         slope,intercept,r_value,p_value,std_err= stats.linregress(Yos,Ygc)
-        #f3ax.plot(Yos, Ygc, 'o', c=mnth, label='Trop O3')
         
-        #mcolours= cm.rainbow(np.array(mnth)/12.0)
-        colors=cmap(mnth)
+        colors=cmap(season)
         f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
         f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
         f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
@@ -209,20 +203,20 @@ def corellation(outfile='images/corellations.png'):
         plt.text(txtx,txty3,"slope=%5.3f"%slope)
         if i==1: plt.legend()
     # set plot titles
-    f3.suptitle('Corellation',fontsize=21)
+    f3.suptitle('Correlation',fontsize=21)
     
     # add colourbar space to the right
     f3.subplots_adjust(right=0.85)
     cbar_ax = f3.add_axes([0.9, 0.25, 0.04, 0.5])
     
     # add colourbar, force the stupid thing to be the same as the one used in plotting...
-    sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=1,vmax=12))
+    sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=1,vmax=4))
     sm._A=[]
     cb=f3.colorbar(sm,cax=cbar_ax)
     
     # set the 12 ticks nicely and roughly centred
-    cb.set_ticks(np.linspace(1,12,12) + (6.5-np.linspace(1,12,12))/12.)
-    cb.set_ticklabels(['J','F','M','A','M','J','J','A','S','O','N','D'])
+    cb.set_ticks(np.linspace(1,4,4) + (2.5-np.linspace(1,4,4))/4.)
+    cb.ax.set_yticklabels(['Summer','Autumn','Winter','Spring'],rotation=90)
     #cb.set_label('month')
     
     # save then close plots
@@ -627,8 +621,8 @@ if __name__ == "__main__":
     
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    #anomaly_corellation()
-    corellation()
+    anomaly_correlation()
+    correlation()
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()
