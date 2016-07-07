@@ -45,12 +45,12 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
     # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
     for gc, os, f3ax, i in zip(files, o3sondes, f3axes, range(len(files))):
         #xlim,ylim=xlims[i],ylims[i]
-        xlim,ylim=[-1.5,1.5],[-1.5,1.5]
+        xlim,ylim=[-1,1],[-1.5,1.5]
         plt.sca(f3ax) # set current axis
         ## grab variables
         # Ozone data array [time] in molecules/cm2
         # Note I only want UTC0 data from the model
-        allhours=[ d.hour for d in gc['Date'] ]
+        allhours=np.array([ d.hour for d in gc['Date'] ])
         H0inds=np.where(allhours==0)[0]
         
         data=gc['O3TropColumn'][H0inds]
@@ -59,22 +59,22 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
         # create string title and turn tau's into matplotlib date numbers
         station=gc['Station']
         dates = gc['Date'][H0inds]
-        allmonths=[ d.month for d in dates ]
+        allmonths=np.array([ d.month for d in dates ])
         sdates= np.array(os.dates)
-        sallmonths= [ d.month for d in sdates ]
+        sallmonths= np.array([ d.month for d in sdates ])
         mean = np.zeros(12)
         smean= np.zeros(12)
         for i in range(12):
-            minds=np.where(allmonths == i+1)
-            sminds=np.where(sallmonths == i+1)
-            mean=np.mean(data[minds])
-            smean=np.mean(sdata[sminds])
+            minds=np.where(allmonths == i+1)[0]
+            sminds=np.where(sallmonths == i+1)[0]
+            mean[i]=np.nanmean(data[minds])
+            smean[i]=np.nanmean(sdata[sminds])
         # only look at data with matching dates
         osh0dates= [datetime(d.year,d.month,d.day,0,0) for d in sdates]
         Yos=[]
         Ygc=[]
         mnth=[]
-        for sdate, si in zip(osh0dates, range(len(osh0dates))):
+        for si, sdate in enumerate(osh0dates):
             if sdate in dates:
                 ind=np.where(dates == sdate)[0]
                 if len(ind) == 0 or np.isnan(sdata[si]):
@@ -93,32 +93,38 @@ def anomaly_corellation(outfile='images/corellations_anomalies.png'):
         Yos,Ygc = np.array(Yos),np.array(Ygc)
         # plot correlation coefficient
         slope,intercept,r_value,p_value,std_err= stats.linregress(Yos,Ygc)
-        
-        aplot=f3ax.scatter(Yos, Ygc, c=mnth, cmap=cmap, label='Trop O3')
+        colors=cmap(mnth)
+        f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
         f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
         #f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
         f3ax.plot([-1,1], [-1, 1], 'k--', label='1-1 line')
         f3ax.set_title(station)
-        #f3ax.set_ylim(ylim)
-        #f3ax.set_xlim(xlim)
-        txty=0.15*ylim[1]
-        txtx=0.85*xlim[1]
-        txty2=0.23*ylim[1]
+        f3ax.set_ylim(ylim)
+        f3ax.set_xlim(xlim)
+        txty=ylim[0]+0.1*(ylim[1]-ylim[0])
+        txtx=xlim[0]+0.81*(xlim[1]-xlim[0])
+        txty2=ylim[0]+0.17*(ylim[1]-ylim[0])
+        txty3=ylim[0]+.24*(ylim[1]-ylim[0])
         plt.text(txtx,txty,"N=%d"%len(Yos))
         plt.text(txtx,txty2,"r=%5.3f"%r_value)
+        plt.text(txtx,txty3,"slope=%5.3f"%slope)
         if i==1: plt.legend()
     # set plot titles
-    f3.suptitle('Corellation',fontsize=21)
+    f3.suptitle('Relative anomaly from monthly mean',fontsize=21)
     
     # add colourbar space to the right
-    f3.subplots_adjust(right=0.8)
-    cbar_ax = f3.add_axes([0.85, 0.20, 0.05, 0.6])
-    # add colourbar
-    cb=f3.colorbar(aplot,cax=cbar_ax)
+    f3.subplots_adjust(right=0.85)
+    cbar_ax = f3.add_axes([0.9, 0.25, 0.04, 0.5])
+    
+    # add colourbar, force the stupid thing to be the same as the one used in plotting...
+    sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=1,vmax=12))
+    sm._A=[]
+    cb=f3.colorbar(sm,cax=cbar_ax)
+    
     # set the 12 ticks nicely and roughly centred
     cb.set_ticks(np.linspace(1,12,12) + (6.5-np.linspace(1,12,12))/12.)
     cb.set_ticklabels(['J','F','M','A','M','J','J','A','S','O','N','D'])
-    cb.set_label('month')
+    #cb.set_label('month')
     
     # save then close plots
     #plt.show()
@@ -187,31 +193,37 @@ def corellation(outfile='images/corellations.png'):
         #f3ax.plot(Yos, Ygc, 'o', c=mnth, label='Trop O3')
         
         #mcolours= cm.rainbow(np.array(mnth)/12.0)
-        
-        aplot=f3ax.scatter(Yos, Ygc, c=mnth, cmap=cmap, label='Trop O3')
+        colors=cmap(mnth)
+        f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
         f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
         f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
         f3ax.set_title(station)
         f3ax.set_ylim(ylim)
         f3ax.set_xlim(xlim)
-        txty=0.15*ylim[1]
-        txtx=0.85*xlim[1]
-        txty2=0.23*ylim[1]
+        txty=ylim[0]+0.1*(ylim[1]-ylim[0])
+        txtx=xlim[0]+0.81*(xlim[1]-xlim[0])
+        txty2=ylim[0]+0.17*(ylim[1]-ylim[0])
+        txty3=ylim[0]+.24*(ylim[1]-ylim[0])
         plt.text(txtx,txty,"N=%d"%len(Yos))
         plt.text(txtx,txty2,"r=%5.3f"%r_value)
+        plt.text(txtx,txty3,"slope=%5.3f"%slope)
         if i==1: plt.legend()
     # set plot titles
     f3.suptitle('Corellation',fontsize=21)
     
     # add colourbar space to the right
-    f3.subplots_adjust(right=0.8)
-    cbar_ax = f3.add_axes([0.85, 0.20, 0.05, 0.6])
-    # add colourbar
-    cb=f3.colorbar(aplot,cax=cbar_ax)
+    f3.subplots_adjust(right=0.85)
+    cbar_ax = f3.add_axes([0.9, 0.25, 0.04, 0.5])
+    
+    # add colourbar, force the stupid thing to be the same as the one used in plotting...
+    sm = plt.cm.ScalarMappable(cmap=cmap,norm=plt.Normalize(vmin=1,vmax=12))
+    sm._A=[]
+    cb=f3.colorbar(sm,cax=cbar_ax)
+    
     # set the 12 ticks nicely and roughly centred
     cb.set_ticks(np.linspace(1,12,12) + (6.5-np.linspace(1,12,12))/12.)
     cb.set_ticklabels(['J','F','M','A','M','J','J','A','S','O','N','D'])
-    cb.set_label('month')
+    #cb.set_label('month')
     
     # save then close plots
     #plt.show()
@@ -615,7 +627,7 @@ if __name__ == "__main__":
     
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    anomaly_corellation()
+    #anomaly_corellation()
     corellation()
     #yearly_cycle()
     #monthly_GC_profiles()
