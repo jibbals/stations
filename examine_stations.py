@@ -7,7 +7,7 @@
 
 # These stop python from displaying images, faster to save images this way
 import matplotlib
-# matplotlib.use('Agg')
+matplotlib.use('Agg')
 
 # plotting, reading ncdf, csv, maths
 import matplotlib.pyplot as plt # plotting module
@@ -255,6 +255,64 @@ def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     plt.savefig(outfile)
     print("Image saved to %s"%outfile)
     plt.close(f)
+
+def degraded_profile_comparison(station=0,date=datetime(2006,1,1)):
+    '''
+    Profile comparison at a site and date with sonde degraded to geos chem resolution
+    
+    '''
+    
+    # read site data
+    site = fio.read_GC_station(station)
+    os = fio.read_site(station)
+    
+    # some plot setup stuff
+    xlim=[0,125]
+    ylim=[0,14]
+    col={'GEOS':'black','Sonde':'maroon','SondeDeg':'fuchsia'} # colours for model vs sondes
+            
+    # Set up plot axes
+    f = plt.figure(figsize=(10,14))
+    plt.xlim(xlim)
+    plt.ylim(ylim)
+    plt.ylabel('Altitude(km)')
+    plt.xlabel('O3 (ppbv)')
+    
+    # plot original and geos chem for specific date:
+    # find matching model profile
+    dates=site['Date']
+    ymd = np.array([ d.strftime('%Y%m%d') for d in dates])
+    ind=np.where( ymd=='%4d%02d%02d'%(date.year,date.month,date.day) )[0]
+    
+    if len(ind) == 0:
+        print('Missing %s from model output'%date.strftime('%Y%m%d'))
+    ind=ind[0]
+    
+    # get profiles
+    GC = site['O3'][ind,:]
+    GCZ=site['Altitudes'][ind,:] *1e-3 # m to km
+    TP = site['TropopauseAltitude'][ind] / 1000.0
+    plt.plot(GC,GCZ,color=col['GEOS'],linewidth=3,label='GEOS-Chem')
+    plt.plot(xlim,[TP,TP],'--',color=col['GEOS'])
+    
+    sind=os.get_index(date)
+    prof=os.o3ppbv[sind,:]
+    osz= os.gph[sind,:]*1e-3 # m to km
+    ostp= os.tp[sind] # sonde TP is in km
+    plt.plot(prof,osz,color=col['Sonde'],linewidth=3,'Sonde')
+    plt.plot(xlim,[ostp,ostp],'--',color=col['Sonde'])
+    
+    # Degrade sonde to GEOS vertical resolution
+    
+    # set title, and layout, then save figure
+    plt.legend()
+    stn_name=site['Station'].split(' ')[0]
+    f.suptitle("Profiles over "+stn_name)
+    outfile='images/eventprofiles/%s_%s_profiles.png'%stn_name,date.strftime("%Y%m%d")
+    plt.savefig(outfile)
+    print("Image saved to %s"%outfile)
+    plt.close(f)
+
 
 ###########################################################################
 #####################    Finished Functions                ################
