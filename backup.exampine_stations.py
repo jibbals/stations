@@ -21,9 +21,6 @@ import fio
 # set all fonts to 15
 matplotlib.rcParams.update({'font.size': 15})
 
-# seasonal colormap
-seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
-
 ###########################################################################
 #####################    Functions                         ################
 ###########################################################################
@@ -189,6 +186,7 @@ def time_series(outfile='images/StationSeries.png'):
         newylim= [1/2.69e16 * oldlim for oldlim in f3ax.get_ylim()]
         newax.set_ylim(newylim)
     
+    
     # set plot titles
     f3.suptitle('Tropospheric ozone column',fontsize=21)
     
@@ -256,11 +254,7 @@ def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     print("Image saved to %s"%outfile)
     plt.close(f)
 
-###########################################################################
-#####################    Finished Functions                ################
-###########################################################################
-
-def monthly_profiles(hour=0):
+def monthly_GC_profiles(hour=None):
     '''
     Profile mean and std deviation for each month for each site
     If you only want to consider a particular hour then set the hour parameter
@@ -269,18 +263,11 @@ def monthly_profiles(hour=0):
     
     # read site data
     sites = [ fio.read_GC_station(p) for p in range(3) ]
-    o3sondes = [ fio.read_site(p) for p in range(3) ]
     
-    # some plot setups stuff
-    titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
-    months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
-    seasonalcolours=seasonal_cmap.colors
-    col={'GEOS':'black','Sonde':'maroon'} # colours for model vs sondes
     #for each station do this
-    # site,sonde=sites[1],o3sondes[1]
-    for site, sonde in zip(sites, o3sondes):
+    for site in sites:
         
-        # Set up plot axes
+        # Set up plot
         f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
         axes[3,1].set_xlabel('Ozone (ppb)')
         xlim=[0,125]
@@ -291,88 +278,146 @@ def monthly_profiles(hour=0):
         
         # Grab Ozone
         O3 = site['O3']
-        s_O3 = np.array(sonde.o3ppbv)
-        
         # metres to kilometres
-        s_TP = np.array(sonde.tp) # sonde TP is already in km
         TP = site['TropopauseAltitude'] / 1000.0
         Z  = site['Altitudes']/1000.0 
-        s_Z  = np.array(sonde.gph) / 1000.0 
         Znew= np.linspace(0,14,100)
         # need to vertically bin the O3 profiles,
         # interpolated at 100 points up to 14km
         means=np.zeros([12,100])
         stds =np.zeros([12,100])
         TPm = np.zeros(12)
-        s_means=np.zeros([12,100])
-        s_stds =np.zeros([12,100])
-        s_TPm = np.zeros(12)
-        s_counts=np.zeros(12)
+        TPs = np.zeros(12)
         
         # bin data into 12 months
         allmonths=np.array([ d.month for d in site['Date'] ])
-        s_allmonths=np.array( [ d.month for d in sonde.dates ])
-        for month in range(12):
-            # find indices matching the current month
+        for month in range(12):            
             inds=np.where(allmonths == month+1)[0]
             if hour is not None:
                 allhours =np.array([ d.hour for d in site['Date'] ])
                 inds = np.where( (allmonths == month+1) * (allhours==hour) )[0]
-            s_inds=np.where(s_allmonths == month+1)[0]
-            n, s_n = len(inds), len(s_inds)
-            s_counts[month]=s_n
-            
             # each profile needs to be interpolated up to 14km
-            profs=np.zeros([n,100])
-            s_profs=np.zeros([s_n,100])
-            for i in range(n):
-                profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:],left=np.NaN,right=np.NaN)
-            for i in range(s_n):
-                s_profs[i,:] = np.interp(Znew, s_Z[s_inds[i],:], s_O3[s_inds[i],:],left=np.NaN,right=np.NaN)
-            means[month,:]=np.nanmean(profs,axis=0)
-            stds[month,:] =np.nanstd(profs,axis=0)
-            TPm[month] = np.nanmean(TP[inds])
-            s_means[month,:]=np.nanmean(s_profs,axis=0)
-            s_stds[month,:] =np.nanstd(s_profs,axis=0)
-            s_TPm[month] = np.nanmean(s_TP[s_inds])
-            
+            profs=np.zeros([len(inds),100])
+            for i in range(len(inds)):
+                profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:])
+            means[month,:]=np.mean(profs,axis=0)
+            stds[month,:] =np.std(profs,axis=0)
+            TPm[month] = np.mean(TP[inds])
+            TPs[month] = np.std(TP[inds])
+        
         # plot the mean profiles and shade the area of 1 stdev
+        titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
+        months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
+        # colour each season!
+        colours=['red','magenta','blue','green']
         for i in range(4):
             for j in range(3):
-                plt.sca(axes[i,j]) # set current axis
-                mind=months[i,j]
-                X=means[mind,:]                
-                Xl=X-stds[mind,:]
-                Xr=X+stds[mind,:]
-                s_X=s_means[mind,:]
-                s_Xl=s_X-s_stds[mind,:]
-                s_Xr=s_X+s_stds[mind,:]
-                
-                # plot averaged profiles + std
-                plt.plot(X, Znew , linewidth=3, color=col['GEOS'])
-                plt.fill_betweenx(Znew, Xl, Xr, alpha=0.5, color=seasonalcolours[i])
-                plt.plot(s_X, Znew , linewidth=3, color=col['Sonde'])
-                plt.fill_betweenx(Znew, s_Xl, s_Xr, alpha=0.5, color=seasonalcolours[i])
-                # plot tropopause
-                Y=TPm[mind]
-                s_Y=s_TPm[mind]
-                plt.plot(xlim, [Y, Y], '--', linewidth=2, color=col['GEOS'])
-                plt.plot(xlim, [s_Y, s_Y], '--', linewidth=2, color=col['Sonde'])
-                # plot title and text
-                plt.title(titles[i,j])
-                # add count text to upper corner
-                plt.text(.72*xlim[1], .5, "%d sondes"%s_counts[mind])
+                X=means[months[i,j],:]
+                Xl=X-stds[months[i,j],:]
+                Xr=X+stds[months[i,j],:]
+                axes[i,j].plot(X, Znew , linewidth=3, color='k')
+                axes[i,j].fill_betweenx(Znew, Xl, Xr, alpha=0.3, color=colours[i])
+                axes[i,j].set_title(titles[i,j])
+                Y=TPm[months[i,j]]
+                Ye=TPs[months[i,j]]
+                axes[i,j].plot(xlim, [Y, Y], 'k--', linewidth=2 )
+                axes[i,j].fill_between(xlim, [Y+Ye,Y+Ye], [Y-Ye,Y-Ye], alpha=0.2, color='k')
         
         # set title, and layout, then save figure
         stn_name=site['Station'].split(' ')[0]
         if hour is not None: stn_name+='_H%02d'%hour
-        f.suptitle("Monthly Averaged Profiles over "+stn_name)
-        outfile='images/eventprofiles/%s_monthprofiles.png'%stn_name
+        f.suptitle("Monthly Averaged Profiles from GEOS-Chem over "+stn_name)
+        outfile='images/eventprofiles/%s_GC_monthprofiles.png'%stn_name
         plt.tight_layout()
         plt.subplots_adjust(top=0.94)
         plt.savefig(outfile)
         print("Image saved to %s"%outfile)
         plt.close(f)
+
+def monthly_sonde_profiles():
+    '''
+    Profile mean and std deviation for each month for each site
+    '''
+    
+    # read site data
+    o3sondes = [ fio.read_site(p) for p in range(3) ]
+    
+    #for each station do this
+    for site in o3sondes:
+        
+        # Set up plot
+        f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
+        axes[3,1].set_xlabel('Ozone (ppb)')
+        xlim=[0,125]
+        axes[3,1].set_xlim(xlim)
+        axes[1,0].set_ylabel('Altitude (km)')
+        ylim=[0,14]
+        axes[1,0].set_ylim(ylim)
+        
+        # Grab Ozone
+        O3 = np.array(site.o3ppbv)
+        # metres to kilometres
+        TP = np.array(site.tp) # TP is already in km
+        Z  = np.array(site.gph) / 1000.0 
+        Znew= np.linspace(0,14,100)
+        # need to vertically bin the O3 profiles,
+        # interpolated at 100 points up to 14km
+        means=np.zeros([12,100])
+        stds =np.zeros([12,100])
+        TPm = np.zeros(12)
+        TPs = np.zeros(12)
+        counts=np.zeros(12)
+        
+        # bin data into 12 months
+        allmonths=np.array([ d.month for d in site.dates ])
+        for month in range(12):
+            inds=np.where(allmonths == month+1)[0]
+            n = len(inds)
+            # each profile needs to be interpolated up to 14km
+            profs=np.zeros([n,100])
+            for i in range(n):
+                profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:])
+            means[month,:]=np.nanmean(profs,axis=0)
+            stds[month,:] =np.nanstd(profs,axis=0)
+            TPm[month] = np.nanmean(TP[inds])
+            TPs[month] = np.nanstd(TP[inds])
+            counts[month]=n
+        
+        # plot the mean profiles and shade the area of 1 stdev
+        titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
+        months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
+        # colour each season!
+        colours=['red','magenta','blue','green']
+        for i in range(4):
+            for j in range(3):
+                plt.sca(axes[i,j]) # set current axis
+                mind=months[i,j] # which month are we plotting
+                X=means[mind,:]
+                Xl=X-stds[mind,:]
+                Xr=X+stds[mind,:]
+                plt.plot(X, Znew , linewidth=3, color='k')
+                plt.fill_betweenx(Znew, Xl, Xr, alpha=0.3, color=colours[i])
+                plt.title(titles[i,j])
+                Y=TPm[mind]
+                Ye=TPs[mind]
+                plt.plot(xlim, [Y, Y], 'k--', linewidth=2 )
+                plt.fill_between(xlim, [Y+Ye,Y+Ye], [Y-Ye,Y-Ye], alpha=0.2, color='k')
+                # add count text to upper corner
+                plt.text(.75*xlim[1], .5, "N=%d"%counts[mind])
+        
+        # set title, and layout, then save figure
+        stn_name=site.name
+        f.suptitle("Monthly averaged profiles from ozonesondes over "+stn_name)
+        outfile='images/%s_sonde_monthprofiles.png'%stn_name
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.94)
+        plt.savefig(outfile)
+        print("Image saved to %s"%outfile)
+        plt.close(f)
+
+###########################################################################
+#####################    Finished Functions                ################
+###########################################################################
 
 def anomaly_correlation(outfile='images/correlations_anomalies.png'):
     '''
@@ -389,8 +434,8 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
     f3axes[1].set_ylabel('GEOS-Chem tropospheric O3 relative anomaly')
     ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
     
-    # Use seasonal colourmap (I defined at start)
-    cmap=seasonal_cmap
+    # set up colorbar
+    cmap=plt.get_cmap('gist_rainbow', 4)
     
     # for each station do this
     # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
@@ -431,6 +476,8 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
                     continue
                 else: 
                     ind=ind[0]
+                #print(ind, dates[ind])
+                #print(si, sdates[si])
                 #Work out anomaly and append to list
                 mind=sdate.month-1
                 Yos.append((sdata[si]-smean[mind])/smean[mind])
@@ -443,6 +490,7 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
         colors=cmap(season)
         f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
         f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
+        #f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
         f3ax.plot([-1,1], [-1, 1], 'k--', label='1-1 line')
         f3ax.set_title(station)
         f3ax.set_ylim(ylim)
@@ -496,8 +544,7 @@ def correlation(outfile='images/correlations.png'):
     ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
     
     # set up colorbar
-    #cmap=plt.get_cmap('gist_rainbow', 4)
-    cmap=seasonal_cmap
+    cmap=plt.get_cmap('gist_rainbow', 4)
     
     # for each station do this
     # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
@@ -584,9 +631,8 @@ if __name__ == "__main__":
     
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    #monthly_profiles()
-    #anomaly_correlation()
-    #correlation()
+    anomaly_correlation()
+    correlation()
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()
