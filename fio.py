@@ -445,6 +445,62 @@ class sondes:
                 self.einds.append(cind)
                 self.edates.append(edate)
                 self.edatedeltas.append(self.dates[cind].now() - edate.now())
+    
+    def degrade_vertically(self, gc):
+        '''
+        Degrade data to match GEOS Chem vertical levels
+        input: gc
+            station which get's returned from read_GC_station
+        '''
+        newinds=[]
+        newppbv =[]
+        newgph  =[]
+        # For each sonde date, if there is a matching GEOS-Chem profile then we degrade the sonde
+        for sind, date in enumerate(self.dates):
+            gcdates=gc['Date']
+            ymd = np.array([ d.strftime('%Y%m%d') for d in gcdates])
+            ind=np.where( ymd=='%4d%02d%02d'%(date.year,date.month,date.day) )[0]
+            
+            # if no matching model data then skip date
+            if len(ind) == 0:
+                continue
+            ind=ind[0]
+            
+            # Degrade sonde to GEOS vertical resolution
+            # first what are the GEOS edges
+            GCedges=np.zeros(73)
+            GCedges[1:]=np.cumsum(gc['BXHEIGHT'][ind,:]) # in metres
+            GCmids=gc['Altitudes'][ind,:] # in metres
+            salts=self.gph[sind,:] # in metres
+            prof = np.zeros(72)
+            #degrade prof to average within GC box
+            for i in range(72):
+                prof[i]=np.mean(self.o3ppbv[sind, (GCedges[i] < salts) * ( salts < GCedges[i+1]) ])
+            newinds.append(sind)
+            newppbv.append(prof)
+            newgph.append(GCmids)
+        
+        # update sonde where simple to do so
+        self.dates = [self.dates[i] for i in newinds]
+        self.edates= [] # event dates
+        self.edatedeltas= [] # sonde datetime - event datetime
+        self.einds = [] # event indices
+        self.tpo3 = [self.tpo3[i] for i in newinds] #ozone tropopause (km)
+        self.tplr = [self.tplr[i] for i in newinds]# lapse rate tropopause (km)
+        self.tp = [self.tp[i] for i in newinds] # minimum tropopause (km)
+        self.tpinds = [self.tpinds[i] for i in newinds] # index of min tropopause
+        self.tropvc = [self.tropvc[i] for i in newinds] # tropospheric vertical column molecs/cm2
+        
+        # the following will have 2 dims: [dates,heights]
+        self.press = 0 # heights(hPa) 
+        self.gph = np.array(newgph) # heights(m)
+        self.o3pp = 0 # partial pressure(mPa)
+        self.o3ppbv = np.array(newppbv) # ppbv[dates,heights]
+        self.o3dens = 0 # molecules/cm3
+        self.rh = 0 # rel humidity
+        self.temp = 0 # temperature(Celcius)
+        
+        
 
 # end of header
 _endofheader="#PROFILE"

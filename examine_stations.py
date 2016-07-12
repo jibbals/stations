@@ -89,6 +89,128 @@ def SO_extrapolation():
     plt.title('Tropospheric ozone due to STT to over the Southern Ocean')
     print("Created image at image/SO_extrapolation.ps")
     plt.savefig('images/SO_extrapolation.ps')
+
+
+def monthly_profiles(hour=0, degradesondes=False):
+    '''
+    Profile mean and std deviation for each month for each site
+    If you only want to consider a particular hour then set the hour parameter
+        hour can be one of [0, 6, 12, 18, None]
+    set degradesondes=True to degrade the sondes to matching GEOS-Chem resolution before finding the average..
+    '''
+    
+    # read site data
+    sites = [ fio.read_GC_station(p) for p in range(3) ]
+    o3sondes = [ fio.read_site(p) for p in range(3) ]
+    
+    # some plot setups stuff
+    titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
+    months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
+    seasonalcolours=seasonal_cmap.colors
+    col={'GEOS':'black','Sonde':'maroon'} # colours for model vs sondes
+    #for each station do this
+    # site,sonde=sites[1],o3sondes[1]
+    for site, sonde in zip(sites, o3sondes):
+        
+        # degrade sonde if we are doing that
+        if degradesondes:
+            sonde.degrade_vertically(site)
+        
+        # Set up plot axes
+        f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
+        axes[3,1].set_xlabel('Ozone (ppb)')
+        xlim=[0,125]
+        axes[3,1].set_xlim(xlim)
+        axes[1,0].set_ylabel('Altitude (km)')
+        ylim=[0,14]
+        axes[1,0].set_ylim(ylim)
+        
+        # Grab Ozone
+        O3 = site['O3']
+        s_O3 = np.array(sonde.o3ppbv)
+        
+        # metres to kilometres
+        s_TP = np.array(sonde.tp) # sonde TP is already in km
+        TP = site['TropopauseAltitude'] / 1000.0
+        Z  = site['Altitudes']/1000.0 
+        s_Z  = np.array(sonde.gph) / 1000.0 
+        Znew= np.linspace(0,14,100)
+        # need to vertically bin the O3 profiles,
+        # interpolated at 100 points up to 14km
+        means=np.zeros([12,100])
+        stds =np.zeros([12,100])
+        TPm = np.zeros(12)
+        s_means=np.zeros([12,100])
+        s_stds =np.zeros([12,100])
+        s_TPm = np.zeros(12)
+        s_counts=np.zeros(12)
+        
+        # bin data into 12 months
+        allmonths=np.array([ d.month for d in site['Date'] ])
+        s_allmonths=np.array( [ d.month for d in sonde.dates ])
+        for month in range(12):
+            # find indices matching the current month
+            inds=np.where(allmonths == month+1)[0]
+            if hour is not None:
+                allhours =np.array([ d.hour for d in site['Date'] ])
+                inds = np.where( (allmonths == month+1) * (allhours==hour) )[0]
+            s_inds=np.where(s_allmonths == month+1)[0]
+            n, s_n = len(inds), len(s_inds)
+            s_counts[month]=s_n
+            
+            # each profile needs to be interpolated up to 14km
+            profs=np.zeros([n,100])
+            s_profs=np.zeros([s_n,100])
+            for i in range(n):
+                profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:],left=np.NaN,right=np.NaN)
+            for i in range(s_n):
+                s_profs[i,:] = np.interp(Znew, s_Z[s_inds[i],:], s_O3[s_inds[i],:],left=np.NaN,right=np.NaN)
+            means[month,:]=np.nanmean(profs,axis=0)
+            stds[month,:] =np.nanstd(profs,axis=0)
+            TPm[month] = np.nanmean(TP[inds])
+            s_means[month,:]=np.nanmean(s_profs,axis=0)
+            s_stds[month,:] =np.nanstd(s_profs,axis=0)
+            s_TPm[month] = np.nanmean(s_TP[s_inds])
+            
+        # plot the mean profiles and shade the area of 1 stdev
+        for i in range(4):
+            for j in range(3):
+                plt.sca(axes[i,j]) # set current axis
+                mind=months[i,j]
+                X=means[mind,:]                
+                Xl=X-stds[mind,:]
+                Xr=X+stds[mind,:]
+                s_X=s_means[mind,:]
+                s_Xl=s_X-s_stds[mind,:]
+                s_Xr=s_X+s_stds[mind,:]
+                
+                # plot averaged profiles + std
+                plt.plot(X, Znew , linewidth=3, color=col['GEOS'])
+                plt.fill_betweenx(Znew, Xl, Xr, alpha=0.5, color=seasonalcolours[i])
+                plt.plot(s_X, Znew , linewidth=3, color=col['Sonde'])
+                plt.fill_betweenx(Znew, s_Xl, s_Xr, alpha=0.5, color=seasonalcolours[i])
+                # plot tropopause
+                Y=TPm[mind]
+                s_Y=s_TPm[mind]
+                plt.plot(xlim, [Y, Y], '--', linewidth=2, color=col['GEOS'])
+                plt.plot(xlim, [s_Y, s_Y], '--', linewidth=2, color=col['Sonde'])
+                # plot title and text
+                plt.title(titles[i,j])
+                # add count text to upper corner
+                plt.text(.72*xlim[1], .5, "%d sondes"%s_counts[mind])
+        
+        # set title, and layout, then save figure
+        stn_name=site['Station'].split(' ')[0]
+        if hour is not None: stn_name+='_H%02d'%hour
+        f.suptitle("Monthly Averaged Profiles over "+stn_name)
+        outfile='images/eventprofiles/%s_monthprofiles.png'%stn_name
+        if degradesondes:
+            outfile='images/eventprofiles/%s_monthprofilesdegraded.png'%stn_name
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.94)
+        plt.savefig(outfile)
+        print("Image saved to %s"%outfile)
+        plt.close(f)
     
 def event_profiles(station=2, data=None):
     '''
@@ -256,10 +378,15 @@ def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     print("Image saved to %s"%outfile)
     plt.close(f)
 
-def degraded_profile_comparison(station=0,date=datetime(2006,1,1)):
+
+
+###########################################################################
+#####################    Finished Functions                ################
+###########################################################################
+
+def degraded_profile_comparison(station=0,date=datetime(2007,1,1)):
     '''
     Profile comparison at a site and date with sonde degraded to geos chem resolution
-    
     '''
     
     # read site data
@@ -279,7 +406,13 @@ def degraded_profile_comparison(station=0,date=datetime(2006,1,1)):
     plt.xlabel('O3 (ppbv)')
     
     # plot original and geos chem for specific date:
-    # find matching model profile
+    # find Closest matching sonde date
+    sind=os.get_index(date)
+    olddate=date
+    date=os.dates[sind]
+    yyyymmdd=date.strftime("%Y%m%d")
+    print(olddate-date)
+    
     dates=site['Date']
     ymd = np.array([ d.strftime('%Y%m%d') for d in dates])
     ind=np.where( ymd=='%4d%02d%02d'%(date.year,date.month,date.day) )[0]
@@ -288,149 +421,39 @@ def degraded_profile_comparison(station=0,date=datetime(2006,1,1)):
         print('Missing %s from model output'%date.strftime('%Y%m%d'))
     ind=ind[0]
     
-    # get profiles
+    # get GEOS-Chem profile and plot it
     GC = site['O3'][ind,:]
     GCZ=site['Altitudes'][ind,:] *1e-3 # m to km
     TP = site['TropopauseAltitude'][ind] / 1000.0
-    plt.plot(GC,GCZ,color=col['GEOS'],linewidth=3,label='GEOS-Chem')
+    plt.plot(GC,GCZ,marker='x',color=col['GEOS'],linewidth=3,label='GEOS-Chem')
     plt.plot(xlim,[TP,TP],'--',color=col['GEOS'])
     
-    sind=os.get_index(date)
+    # get sonde profile and plot it
     prof=os.o3ppbv[sind,:]
     osz= os.gph[sind,:]*1e-3 # m to km
     ostp= os.tp[sind] # sonde TP is in km
-    plt.plot(prof,osz,color=col['Sonde'],linewidth=3,'Sonde')
+    plt.plot(prof,osz,color=col['Sonde'],linewidth=3,label='Sonde(orig)')
     plt.plot(xlim,[ostp,ostp],'--',color=col['Sonde'])
     
     # Degrade sonde to GEOS vertical resolution
+    # first what are the GEOS edges
+    GCedges=np.zeros(73)
+    GCedges[1:]=np.cumsum(site['BXHEIGHT'][ind,:])*1e-3
+    prof2 = np.zeros(72)
+    #degrade prof to average within GC box
+    for i in range(72):
+        prof2[i]=np.mean(prof[ (GCedges[i] < osz) * (osz < GCedges[i+1]) ])
+    
+    plt.plot(prof2,GCZ,marker='x',linewidth=3,color=col['SondeDeg'], label='Sonde (degraded)')
     
     # set title, and layout, then save figure
     plt.legend()
     stn_name=site['Station'].split(' ')[0]
-    f.suptitle("Profiles over "+stn_name)
-    outfile='images/eventprofiles/%s_%s_profiles.png'%stn_name,date.strftime("%Y%m%d")
+    f.suptitle("Profile over %s on %s"%(stn_name,yyyymmdd))
+    outfile='images/eventprofiles/%s_%s_profiles.png'%(stn_name,yyyymmdd)
     plt.savefig(outfile)
     print("Image saved to %s"%outfile)
     plt.close(f)
-
-
-###########################################################################
-#####################    Finished Functions                ################
-###########################################################################
-
-def monthly_profiles(hour=0):
-    '''
-    Profile mean and std deviation for each month for each site
-    If you only want to consider a particular hour then set the hour parameter
-        hour can be one of [0, 6, 12, 18, None]
-    '''
-    
-    # read site data
-    sites = [ fio.read_GC_station(p) for p in range(3) ]
-    o3sondes = [ fio.read_site(p) for p in range(3) ]
-    
-    # some plot setups stuff
-    titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
-    months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
-    seasonalcolours=seasonal_cmap.colors
-    col={'GEOS':'black','Sonde':'maroon'} # colours for model vs sondes
-    #for each station do this
-    # site,sonde=sites[1],o3sondes[1]
-    for site, sonde in zip(sites, o3sondes):
-        
-        # Set up plot axes
-        f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
-        axes[3,1].set_xlabel('Ozone (ppb)')
-        xlim=[0,125]
-        axes[3,1].set_xlim(xlim)
-        axes[1,0].set_ylabel('Altitude (km)')
-        ylim=[0,14]
-        axes[1,0].set_ylim(ylim)
-        
-        # Grab Ozone
-        O3 = site['O3']
-        s_O3 = np.array(sonde.o3ppbv)
-        
-        # metres to kilometres
-        s_TP = np.array(sonde.tp) # sonde TP is already in km
-        TP = site['TropopauseAltitude'] / 1000.0
-        Z  = site['Altitudes']/1000.0 
-        s_Z  = np.array(sonde.gph) / 1000.0 
-        Znew= np.linspace(0,14,100)
-        # need to vertically bin the O3 profiles,
-        # interpolated at 100 points up to 14km
-        means=np.zeros([12,100])
-        stds =np.zeros([12,100])
-        TPm = np.zeros(12)
-        s_means=np.zeros([12,100])
-        s_stds =np.zeros([12,100])
-        s_TPm = np.zeros(12)
-        s_counts=np.zeros(12)
-        
-        # bin data into 12 months
-        allmonths=np.array([ d.month for d in site['Date'] ])
-        s_allmonths=np.array( [ d.month for d in sonde.dates ])
-        for month in range(12):
-            # find indices matching the current month
-            inds=np.where(allmonths == month+1)[0]
-            if hour is not None:
-                allhours =np.array([ d.hour for d in site['Date'] ])
-                inds = np.where( (allmonths == month+1) * (allhours==hour) )[0]
-            s_inds=np.where(s_allmonths == month+1)[0]
-            n, s_n = len(inds), len(s_inds)
-            s_counts[month]=s_n
-            
-            # each profile needs to be interpolated up to 14km
-            profs=np.zeros([n,100])
-            s_profs=np.zeros([s_n,100])
-            for i in range(n):
-                profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:],left=np.NaN,right=np.NaN)
-            for i in range(s_n):
-                s_profs[i,:] = np.interp(Znew, s_Z[s_inds[i],:], s_O3[s_inds[i],:],left=np.NaN,right=np.NaN)
-            means[month,:]=np.nanmean(profs,axis=0)
-            stds[month,:] =np.nanstd(profs,axis=0)
-            TPm[month] = np.nanmean(TP[inds])
-            s_means[month,:]=np.nanmean(s_profs,axis=0)
-            s_stds[month,:] =np.nanstd(s_profs,axis=0)
-            s_TPm[month] = np.nanmean(s_TP[s_inds])
-            
-        # plot the mean profiles and shade the area of 1 stdev
-        for i in range(4):
-            for j in range(3):
-                plt.sca(axes[i,j]) # set current axis
-                mind=months[i,j]
-                X=means[mind,:]                
-                Xl=X-stds[mind,:]
-                Xr=X+stds[mind,:]
-                s_X=s_means[mind,:]
-                s_Xl=s_X-s_stds[mind,:]
-                s_Xr=s_X+s_stds[mind,:]
-                
-                # plot averaged profiles + std
-                plt.plot(X, Znew , linewidth=3, color=col['GEOS'])
-                plt.fill_betweenx(Znew, Xl, Xr, alpha=0.5, color=seasonalcolours[i])
-                plt.plot(s_X, Znew , linewidth=3, color=col['Sonde'])
-                plt.fill_betweenx(Znew, s_Xl, s_Xr, alpha=0.5, color=seasonalcolours[i])
-                # plot tropopause
-                Y=TPm[mind]
-                s_Y=s_TPm[mind]
-                plt.plot(xlim, [Y, Y], '--', linewidth=2, color=col['GEOS'])
-                plt.plot(xlim, [s_Y, s_Y], '--', linewidth=2, color=col['Sonde'])
-                # plot title and text
-                plt.title(titles[i,j])
-                # add count text to upper corner
-                plt.text(.72*xlim[1], .5, "%d sondes"%s_counts[mind])
-        
-        # set title, and layout, then save figure
-        stn_name=site['Station'].split(' ')[0]
-        if hour is not None: stn_name+='_H%02d'%hour
-        f.suptitle("Monthly Averaged Profiles over "+stn_name)
-        outfile='images/eventprofiles/%s_monthprofiles.png'%stn_name
-        plt.tight_layout()
-        plt.subplots_adjust(top=0.94)
-        plt.savefig(outfile)
-        print("Image saved to %s"%outfile)
-        plt.close(f)
 
 def anomaly_correlation(outfile='images/correlations_anomalies.png'):
     '''
@@ -643,6 +666,7 @@ if __name__ == "__main__":
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
     #monthly_profiles()
+    monthly_profiles(degradesondes=True)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
