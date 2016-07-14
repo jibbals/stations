@@ -5,9 +5,13 @@
 #####################    Imports and Globals               ################
 ###########################################################################
 
+#IMPORTS:
+#
+
 # These stop python from displaying images, faster to save images this way
 import matplotlib
 matplotlib.use('Agg')
+matplotlib.rcParams.update({'font.size': 15})
 
 # plotting, reading ncdf, csv, maths
 import matplotlib.pyplot as plt # plotting module
@@ -18,8 +22,8 @@ from datetime import datetime
 # Local module for reading sonde dataset
 import fio
 
-# set all fonts to 15
-matplotlib.rcParams.update({'font.size': 15})
+# GLOBALS:
+#
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
@@ -27,7 +31,6 @@ seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','da
 ###########################################################################
 #####################    Functions                         ################
 ###########################################################################
-
 
 def SO_extrapolation():
     '''
