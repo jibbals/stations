@@ -16,7 +16,7 @@ import linecache as _linecache
 from pandas.io.parsers import read_csv as _preadcsv
 import netCDF4 as nc
 import csv
-
+from glob import glob 
 # local module, converts GC tau to datetimes
 from tau_to_date import tau_to_date as ttd
 
@@ -24,11 +24,15 @@ from tau_to_date import tau_to_date as ttd
 ######## Globals #######
 ########################
 
+#directory paths
 _Datadir='./data/'
 _sondesdir='./data/sondes/'
 _sitenames = ['Davis','Macquarie','Melbourne']
 _Datafiles=[ _Datadir+d+'.nc' for d in _sitenames]
 _sondesdirs=[_sondesdir+s for s in _sitenames]
+_trac_avgs=_Datadir+"GC/trac_avg/*.nc"
+
+_event_type={0:"misc",1:"front",2:"cutoff"}
 
 # method to find all the csv paths:
 def _list_files():
@@ -51,6 +55,7 @@ def _list_files():
 # davis, macquarie, melbourne data locations
 _sondecsvs=_list_files()
 # now _sondecsvs[0] is all the davis csv files.. etc
+
 
 def read_GC_station(station):
     '''
@@ -151,30 +156,115 @@ def read_GC_station(station):
     stndict['Altitudes']=Altitude_mids
     return(stndict)
 
-def read_GC_global():
+def read_GC_global(subset=[-180,-90,180,90]):
     '''
-    Read the GEOS-CHEM dataset, and the met field TROPP
+    Read the GEOS-CHEM dataset, created by running pncgen on the GC trac_avg files produced by UCX_2x25 updated run
+    Optionally subset to some region
     Return dictionary:
-        AIRDEN: molecules/cm3
-        PSURF: hpa
-        Tau: Hrs since sliced bread
-        O3: ppb, (GEOS_CHEM SAYS PPBV)
-        BXHEIGHT: m
-        Pressure: hPa
-        # non station file stuff(added here)
-        TropopausePressure: hPa #(interpolated from .a3 met fields)
-        O3Density: molecules/cm3
-        O3TropColumn: molecules/cm2
-        TropopauseAltitude: m
-        Altitudes: m
+        airdensity: molecules/cm3
+        psurf: hpa
+        time: Hrs since sliced bread
+        O3ppb: ppb, (GEOS_CHEM SAYS PPBV)
+        boxheight: m
+        tropopausepressure: hPa
+        O3density: molecules/cm3
+        O3tropcolumn: molecules/cm2
+        tropopausealtitude: m
+        altitudes: m
         PMids: hPa
         PEdges: hPa
         Date: datetime structure of converted Taus
         Station: string with stn name and lat/lon
     '''
-    #TODO: implement
-    return(0)
-
+    files=glob(_trac_avgs)
+    files.sort()
+    data=dict()
+    
+    # Read in the data then close the file
+    with nc.MFDataset(files) as fh:
+        
+        # simple dimensions to read in
+        for key in ['time','latitude','longitude']:
+            data[key]=fh.variables[key][...]
+        
+        # also grab and rename these things
+        data['latbounds']=np.append(fh.variables['latitude_bounds'][:][:,0], fh.variables['latitude_bounds'][:][-1,1])
+        data['lonbounds']=np.append(fh.variables['longitude_bounds'][:][:,0], fh.variables['longitude_bounds'][:][-1,1])
+        data['O3ppb']=fh.variables['IJ-AVG-$_O3'][...] # ppb
+        data['tppressure']=fh.variables['TR-PAUSE_TP-PRESS'][...] # hPa
+        data['tpaltitude']=fh.variables['TR-PAUSE_TP-HGHT'][...] # km
+        data['tplevel']=fh.variables['TR-PAUSE_TP-LEVEL'][...]
+        data['boxheight'] = fh.variables['BXHGHT-$_BXHEIGHT'][...] # m
+        data['airdensity']=fh.variables['BXHGHT-$_N(AIR)'][...] # molecules / m3
+        data['psurf']=fh.variables['PEDGE-$_PSURF'][...] # hpa at bottom of each vertical level
+        
+        
+    
+    # dimensions
+    n_t, n_z, n_y, n_x=len(data['time']), 72, len(data['latitude']), len(data['longitude'])
+    
+    # Density Column = VMR * AIRDEN [ O3 molecules/cm3 ]
+    data['O3density']= data['O3ppb'] * 1e-9 * data['airdensity'] * 1e6 # ppb -> vmr and /m3 -> /cm3
+    
+    # Get Date from Tau
+    data['date'] = np.array(ttd(data['time']))
+    
+    # geometric pressure mid points
+    pedges=np.append(data['psurf'],np.zeros([n_t,1,n_y,n_x]),axis=1)
+    pmids = np.sqrt(pedges[:, 0:n_z,:,:] * pedges[:, 1:(n_z+1),:,:]) # geometric mid point
+    data['pmids']=pmids
+    data['pedges']=pedges
+    
+    # Altitude mid points from boxheights
+    data['altitudes']=np.cumsum(data['boxheight'],axis=1)-data['boxheight']/2.0
+    
+    # Tropospheric O3 Column!!!!
+    TVC = np.ndarray([n_t,n_y,n_x]) + np.NaN
+    Atrop=[]
+    # For each vertical column of data
+    for i in range(n_t):
+        tpi=data['tplevel'][i,0,:,:]
+        
+        # tpinds = tropospheric part of column
+        levs=np.arange(1,72.5)
+        levs=np.transpose(np.tile(levs[:], (n_x,n_y,1)))
+        #inds=np.where(levs<tpi)
+        
+        # ozone and boxheight for the entire troposphere
+        O3i=data['O3density'][i,...]
+        bhi=data['boxheight'][i,...]
+        
+        # working out how to do this dimensionally was too hard, just loop over..
+        for x in range(n_x):
+            for y in range(n_y):
+                inds=np.where(levs[x,y]<=tpi[x,y])
+                TVC[i,y,x] = np.sum(O3i[inds,y,x]*bhi[inds,y,x]*100,axis=0)
+        
+        # Fraction of TP level which is tropospheric
+        # 
+        # frac= tpi - int(tpi)
+        
+        ## Find Trop VC of O3
+        # sum of (molecules/cm3 * height(cm)) in the troposphere
+        TVCi=np.sum(*100, axis=0)
+        #TVCi=TVCi+ frac*data['O3density'][i,TPLi]*stndict['boxheight'][i,TPLi]*100
+        TVC.append(TVCi)
+        
+        ## Altitude of trop
+        #
+        Atropi=np.sum(stndict['BXHEIGHT'][i, tpinds])
+        Atropi = Atropi+frac*stndict['BXHEIGHT'][i, TPLi]
+        Atrop.append(Atropi)
+        
+    stndict['O3TropColumn']=np.array(TVC)
+    stndict['TropopauseAltitude']=np.array(Atrop)
+    stndict['TropopauseLevel']=np.array(TPL)
+    # Add pressure info
+    stndict['PEdges']=pedges
+    stndict['PMids']=pmids
+    stndict['Altitudes']=Altitude_mids
+    return(stndict)
+    
 # Sonde data class, created to hold stuff
 #
 class sondes:
@@ -192,6 +282,7 @@ class sondes:
         self.dates = []
         self.edates= [] # event dates
         self.edatedeltas= [] # sonde datetime - event datetime
+        self.etype = [] # event is either from a cutoff low, a front, or something else
         self.einds = [] # event indices
         self.tpo3 = [] #ozone tropopause (km)
         self.tplr = [] # lapse rate tropopause (km)
