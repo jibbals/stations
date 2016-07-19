@@ -56,6 +56,31 @@ def _list_files():
 _sondecsvs=_list_files()
 # now _sondecsvs[0] is all the davis csv files.. etc
 
+def save_to_netcdf(outfilename, dimsdict, arraydict, unitsdict):
+    '''
+    Takes a dict of arrays and a dict of units...
+    save to netcdf
+    '''
+    fid = nc.Dataset(outfilename, 'w', format='NETCDF4')
+    fid.description = "NetCDF4 File written by Jesse"
+    
+    # add dimensions, these will also be one dimensional variables
+    for key in dimsdict.keys():
+        fid.createDimension(key, dimsdict[key].shape)
+        var = fid.createVariable(key, dimsdict[key].dtype, (key,))
+        var[:] = dimsdict[key]
+        var.units=unitsdict[key]
+    # add variables
+    for key in arraydict.keys():
+        #writedata and add units attribute
+        # easy way to match variable to it's dimensionals?
+        var = fid.createVariable(key, 'f8', arraydict[key].shape)
+        var[:] = arraydict[key]
+        var.units=unitsdict[key]
+        #var.setncatts({'units': unitsdict[key]})
+    
+    fid.close()
+    print("saved to "+outfilename)
 
 def read_GC_station(station):
     '''
@@ -156,26 +181,33 @@ def read_GC_station(station):
     stndict['Altitudes']=Altitude_mids
     return(stndict)
 
-def read_GC_global(subset=[-180,-90,180,90]):
+def read_GC_global(subset=[-180,-90,180,90], savetofile=None, readfromfile=None):
     '''
     Read the GEOS-CHEM dataset, created by running pncgen on the GC trac_avg files produced by UCX_2x25 updated run
     Optionally subset to some region
+    Optionally write to new file (will be smaller than all the GC files)
+    Optionally read from new file (written with save to file)
     Return dictionary:
-        airdensity: molecules/cm3
-        psurf: hpa
+        psurf: hpa at level surface
         time: Hrs since sliced bread
+        altitudes: m
         O3ppb: ppb, (GEOS_CHEM SAYS PPBV)
         boxheight: m
-        tropopausepressure: hPa
+        tppressure: hPa
+        tpaltitude: m
+        tpaltitudeforTropVC: m used to calc tropospheric VC
+        tplevel: level of tropopause
         O3density: molecules/cm3
-        O3tropcolumn: molecules/cm2
-        tropopausealtitude: m
-        altitudes: m
-        PMids: hPa
-        PEdges: hPa
-        Date: datetime structure of converted Taus
-        Station: string with stn name and lat/lon
+        O3tropVC: molecules/cm2
+        airdensity: molecules/m3
+        pmids: hPa
+        pedges: hPa
+        date: datetime structure of converted Taus
     '''
+    if readfromfile is not None:
+        # Structure is saved in this file:
+        assert False, "IMPLEMENT THIS"
+    
     files=glob(_trac_avgs)
     files.sort()
     data=dict()
@@ -192,8 +224,8 @@ def read_GC_global(subset=[-180,-90,180,90]):
         data['lonbounds']=np.append(fh.variables['longitude_bounds'][:][:,0], fh.variables['longitude_bounds'][:][-1,1])
         data['O3ppb']=fh.variables['IJ-AVG-$_O3'][...] # ppb
         data['tppressure']=fh.variables['TR-PAUSE_TP-PRESS'][...] # hPa
-        data['tpaltitude']=fh.variables['TR-PAUSE_TP-HGHT'][...] # km
-        data['tplevel']=fh.variables['TR-PAUSE_TP-LEVEL'][...]
+        data['tpaltitude']=fh.variables['TR-PAUSE_TP-HGHT'][...]*1e3 # km -> m
+        data['tplevel']=fh.variables['TR-PAUSE_TP-LEVEL'][...] # dimensionless
         data['boxheight'] = fh.variables['BXHGHT-$_BXHEIGHT'][...] # m
         data['airdensity']=fh.variables['BXHGHT-$_N(AIR)'][...] # molecules / m3
         data['psurf']=fh.variables['PEDGE-$_PSURF'][...] # hpa at bottom of each vertical level
@@ -204,7 +236,7 @@ def read_GC_global(subset=[-180,-90,180,90]):
     n_t, n_z, n_y, n_x=len(data['time']), 72, len(data['latitude']), len(data['longitude'])
     
     # Density Column = VMR * AIRDEN [ O3 molecules/cm3 ]
-    data['O3density']= data['O3ppb'] * 1e-9 * data['airdensity'] * 1e6 # ppb -> vmr and /m3 -> /cm3
+    data['O3density']= data['O3ppb'] * 1e-9 * data['airdensity'] * 1e-6 # ppb -> vmr and /m3 -> /cm3
     
     # Get Date from Tau
     data['date'] = np.array(ttd(data['time']))
@@ -220,7 +252,8 @@ def read_GC_global(subset=[-180,-90,180,90]):
     
     # Tropospheric O3 Column!!!!
     TVC = np.ndarray([n_t,n_y,n_x]) + np.NaN
-    Atrop=[]
+    Atrop=np.ndarray([n_t,n_y,n_x]) + np.NaN
+    altm=np.cumsum(data['boxheight'], axis=1) # m
     # For each vertical column of data
     for i in range(n_t):
         tpi=data['tplevel'][i,0,:,:]
@@ -231,39 +264,35 @@ def read_GC_global(subset=[-180,-90,180,90]):
         #inds=np.where(levs<tpi)
         
         # ozone and boxheight for the entire troposphere
-        O3i=data['O3density'][i,...]
-        bhi=data['boxheight'][i,...]
+        O3i=data['O3density'][i,...] # molecules/cm3
+        bhi=data['boxheight'][i,...]*100 # metres -> centimeters
         
+        # Fraction of TP level which is tropospheric
+        # frac= tpi - tpi.astype(int)
+        
+        #starttime=datetime.now()
         # working out how to do this dimensionally was too hard, just loop over..
         for x in range(n_x):
             for y in range(n_y):
-                inds=np.where(levs[x,y]<=tpi[x,y])
-                TVC[i,y,x] = np.sum(O3i[inds,y,x]*bhi[inds,y,x]*100,axis=0)
-        
-        # Fraction of TP level which is tropospheric
-        # 
-        # frac= tpi - int(tpi)
-        
-        ## Find Trop VC of O3
-        # sum of (molecules/cm3 * height(cm)) in the troposphere
-        TVCi=np.sum(*100, axis=0)
-        #TVCi=TVCi+ frac*data['O3density'][i,TPLi]*stndict['boxheight'][i,TPLi]*100
-        TVC.append(TVCi)
-        
-        ## Altitude of trop
-        #
-        Atropi=np.sum(stndict['BXHEIGHT'][i, tpinds])
-        Atropi = Atropi+frac*stndict['BXHEIGHT'][i, TPLi]
-        Atrop.append(Atropi)
-        
-    stndict['O3TropColumn']=np.array(TVC)
-    stndict['TropopauseAltitude']=np.array(Atrop)
-    stndict['TropopauseLevel']=np.array(TPL)
-    # Add pressure info
-    stndict['PEdges']=pedges
-    stndict['PMids']=pmids
-    stndict['Altitudes']=Altitude_mids
-    return(stndict)
+                inds=np.where(levs[:,y,x]<=tpi[y,x])[0]
+                #TVC[i,y,x] = np.sum(O3i[inds,y,x]*bhi[inds,y,x],axis=0) # molecules/cm2
+                TVC[i,y,x] = np.inner(O3i[inds,y,x], np.transpose(bhi[inds,y,x]))
+                Atrop[i,y,x]=altm[i,inds[-1],y,x] # m
+                ## Add fractional part?
+        #endtime=datetime.now()
+        #print("Took %8.2f seconds to get Trop VC for one month"%(endtime-starttime).total_seconds())
+        # np.sum takes ~ 0.32 seconds
+        # np.inner takes ~ 0.27 seconds
+    # sanity check:
+    nearzero=np.squeeze(data['tpaltitude'])-Atrop
+    assert np.mean(nearzero) < 1000, "TP Altitude changing by more than 1km"
+    data['O3tropVC']=TVC # molecs/cm2
+    data['tpaltitudeforTropVC']=Atrop # m
+    
+    if savetofile is not None:
+        assert False, 'IMPLEMENT THIS'
+    
+    return(data)
     
 # Sonde data class, created to hold stuff
 #

@@ -10,7 +10,7 @@
 
 # These stop python from displaying images, faster to save images this way
 import matplotlib
-matplotlib.use('Agg')
+#matplotlib.use('Agg')
 matplotlib.rcParams.update({'font.size': 15})
 
 # plotting, reading ncdf, csv, maths
@@ -31,6 +31,31 @@ seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','da
 ###########################################################################
 #####################    Functions                         ################
 ###########################################################################
+
+def check_GC_output():
+    # for looking at Model Data
+    from mpl_toolkits.basemap import Basemap
+    def drawplanet(lons,lats,data,label,title):
+        m=Basemap(-179,-80,179,80)
+        m.pcolormesh(np.transpose(lons),np.transpose(lats),np.transpose(data), latlon=True)
+        m.drawcoastlines()
+        cb= m.colorbar()
+        cb.set_label(label)
+        plt.title(title)
+    
+    GCData=fio.read_GC_global()
+    lons,lats=np.meshgrid(GCData['lonbounds'],GCData['latbounds'])
+    data=GCData['O3density'][0,0]
+    drawplanet(lons,lats,data,"Molecules cm$^{-3}$","GEOS-Chem simulated surface ozone January average (2004)")
+    plt.savefig("images/GEOS-Chem_surface_ozone_example.png")
+    plt.close()
+    # Now check the Tropospheric VC
+    data=GCData['O3tropVC'][0] # first time slice
+    drawplanet(lons,lats,data,"Molecules cm$^{-2}$","GEOS-Chem simulated tropospheric ozone Column, January average (2004)")
+    plt.show()
+    plt.xlabel("$\Sigma_{z(troposphere)}($ Ozone ppb x $10^{-9}$x boxheight x$ N_{Air})$",fontsize=20)
+    plt.savefig("images/GEOS-Chem_tropospheric_VC_example.png")
+    plt.close()
 
 def SO_extrapolation():
     '''
@@ -59,6 +84,8 @@ def SO_extrapolation():
             fluxpct[month,i] = 0.03
     
     # model SO tropospheric O3 Column:
+    GCData=fio.read_GC_global()
+    
     for month in range(12):
         # TODO: get this data from GEOS-Chem output... try to do the bpch to coards or else more IDL
         SOTropO3[month] = 0.5e18 # molecules/cm2
@@ -665,11 +692,11 @@ def correlation(outfile='images/correlations.png'):
 
 if __name__ == "__main__":
     print ("Running")
-    
+    check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
     #monthly_profiles()
-    monthly_profiles(degradesondes=True)
+    #monthly_profiles(degradesondes=True)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
