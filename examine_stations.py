@@ -33,28 +33,31 @@ seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','da
 ###########################################################################
 
 def check_GC_output():
-    # for looking at Model Data
-    from mpl_toolkits.basemap import Basemap
-    def drawplanet(lons,lats,data,label,title):
-        m=Basemap(-179,-80,179,80)
-        m.pcolormesh(np.transpose(lons),np.transpose(lats),np.transpose(data), latlon=True)
-        m.drawcoastlines()
-        cb= m.colorbar()
-        cb.set_label(label)
-        plt.title(title)
     
+    # read in GC data
     GCData=fio.read_GC_global()
-    lons,lats=np.meshgrid(GCData['lonbounds'],GCData['latbounds'])
-    data=GCData['O3density'][0,0]
-    drawplanet(lons,lats,data,"Molecules cm$^{-3}$","GEOS-Chem simulated surface ozone January average (2004)")
-    plt.savefig("images/GEOS-Chem_surface_ozone_example.png")
+    
+    # Check the surface ozone
+    data=GCData.O3density[0,0] # take first month, surface layer
+    
+    plt.figure(figsize=(14,10))
+    GCData.mapData(data,label="Molecules cm$^{-3}$")
+    plt.title("GEOS-Chem simulated surface ozone (Jan 2004)")
+    pltname="images/GEOS-Chem_surface_ozone_example.png"
+    plt.savefig(pltname)
+    print(pltname+ " saved")
     plt.close()
+    
     # Now check the Tropospheric VC
-    data=GCData['O3tropVC'][0] # first time slice
-    drawplanet(lons,lats,data,"Molecules cm$^{-2}$","GEOS-Chem simulated tropospheric ozone Column, January average (2004)")
-    plt.show()
+    data=GCData.O3tropVC[0] # first time slice
+    
+    plt.figure(figsize=(14,10))
+    GCData.mapData(data,label="Molecules cm$^{-2}$")
+    plt.title("GEOS-Chem simulated tropospheric ozone Column (Jan 2004)")
     plt.xlabel("$\Sigma_{z(troposphere)}($ Ozone ppb x $10^{-9}$x boxheight x$ N_{Air})$",fontsize=20)
-    plt.savefig("images/GEOS-Chem_tropospheric_VC_example.png")
+    pltname="images/GEOS-Chem_tropospheric_VC_example.png"
+    plt.savefig(pltname)
+    print(pltname+ " saved")
     plt.close()
 
 def SO_extrapolation():
@@ -64,31 +67,30 @@ def SO_extrapolation():
     # Read sondes data
     sonde_files=[fio.read_site(s) for s in range(2)]
     # monthly likelihood = occurrences/sondecount each month, for davis and macquarie
-    likelihood=np.zeros([12,2])
+    n_s=len(sonde_files)
+    likelihood=np.zeros([12,n_s])
     # monthly flux percentage
-    fluxpct=np.zeros([12,2])
-    # monthly modelled O3 in SO
-    SOTropO3 = np.zeros(12)
+    fluxpct=np.zeros([12,n_s])
     
     # for davis and macquarie:
-    for os,i in zip(sonde_files,range(2)):
+    for i, os in enumerate(sonde_files):
+        # indices of all events and all sondes within this month
+        allmonths=np.array([ d.month for d in os.dates ])
+        alleventsmonths=np.array([ d.month for d in os.edates ])
         # for each month
+        fluxpc=np.array(os.eflux)/np.array(os.etropvc)
         for month in range(12):
-            # indices of all events and all sondes within this month
-            allmonths=np.array([ d.month for d in os.dates ])
-            alleventsmonths=np.array([ d.month for d in os.edates ])
             inds=np.where(allmonths == month+1)[0]
             einds=np.where(alleventsmonths == month+1)[0]
             likelihood[month,i] = len(einds)/ float(len(inds))
-            # TODO: add flux amount to events_site.csv, will need to do this in IDL
-            fluxpct[month,i] = 0.03
+            # Flux pct per month
+            if len(einds) != 0:
+                fluxpct[month,i] = np.mean(fluxpc[einds])
     
     # model SO tropospheric O3 Column:
     GCData=fio.read_GC_global()
-    
-    for month in range(12):
-        # TODO: get this data from GEOS-Chem output... try to do the bpch to coards or else more IDL
-        SOTropO3[month] = 0.5e18 # molecules/cm2
+    SOTropO3=GCData.southernOceanTVC()
+    X=range(12)
     
     # plot estimated flux on left hand axis
     # plot likelihoods and flux pct on the right hand axis
@@ -97,28 +99,39 @@ def SO_extrapolation():
     flux = SOTropO3 * f * l
     
     plt.clf()
-    ax=plt.subplot(111)
-    X=range(12)
-    plt.plot(X,flux, color='black', linewidth=3, label="Flux")
+    fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
+    plt.sca(axes[0])
+    plt.plot(X,flux, color='black', linewidth=3, label="Flux from STTs")
+    plt.title("Flux from STTs")
+    plt.ylim([1e14, 6e15])
+    
+    ax=axes[1]
+    plt.sca(ax)
+    plt.plot(X, SOTropO3, label="SO Tropospheric VC average")
+    plt.title("Tropospheric ozone VCs in SO (GEOS-Chem)")
+    plt.xlim([-0.5, 11.5])
+    plt.xlabel('Month')
+    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
+    plt.ylabel('Molecules / cm$^3$')
     
     # plot percentages
     newax=plt.twinx()
-    newax.plot(X,f*100, color='teal', label='STT contribution')
-    newax.plot(X,l*100, color='magenta', label='STT likelihood')
+    # likelihood pct * pct contribution
+    newax.plot(X,l*f*100, color='teal', label='STT Contribution Factor')
+    #newax.plot(X,l*100, color='magenta', label='STT likelihood')
     
     # axes and legends
     newax.legend(loc=1)
     newax.set_ylabel('percent')
-    newax.set_ylim([0,50])
+    newax.set_ylim([0,2])
     ax.legend(loc=2)
-    ax.set_ylim([1e14, 6e15])
     ax.set_ylabel('Flux (molecules/cm2)')
     plt.xlim([-0.5, 11.5])
     ax.set_xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.title('Tropospheric ozone due to STT to over the Southern Ocean')
-    print("Created image at image/SO_extrapolation.ps")
-    plt.savefig('images/SO_extrapolation.ps')
+    plt.suptitle('Tropospheric ozone due to STT to over the Southern Ocean')
+    print("Created image at image/SO_extrapolation.png")
+    plt.savefig('images/SO_extrapolation.png')
 
 
 def monthly_profiles(hour=0, degradesondes=False):
@@ -692,7 +705,7 @@ def correlation(outfile='images/correlations.png'):
 
 if __name__ == "__main__":
     print ("Running")
-    check_GC_output()
+    #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
     #monthly_profiles()
@@ -702,6 +715,6 @@ if __name__ == "__main__":
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()
-    #SO_extrapolation()
+    SO_extrapolation()
     #[monthly_GC_profiles(hour=h) for h in [0,6,12,18] ]
     

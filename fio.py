@@ -6,7 +6,6 @@
 
 import numpy as np
 from datetime import datetime
-from datetime import timedelta
 
 # directory and file listing
 from os import walk as _walk
@@ -19,6 +18,7 @@ import csv
 from glob import glob 
 # local module, converts GC tau to datetimes
 from tau_to_date import tau_to_date as ttd
+from classes import sondes, GChem
 
 ########################
 ######## Globals #######
@@ -33,6 +33,10 @@ _sondesdirs=[_sondesdir+s for s in _sitenames]
 _trac_avgs=_Datadir+"GC/trac_avg/*.nc"
 
 _event_type={0:"misc",1:"front",2:"cutoff"}
+
+# end of header
+_endofheader="#PROFILE"
+_headerlines=51
 
 # method to find all the csv paths:
 def _list_files():
@@ -55,6 +59,10 @@ def _list_files():
 # davis, macquarie, melbourne data locations
 _sondecsvs=_list_files()
 # now _sondecsvs[0] is all the davis csv files.. etc
+
+########################
+######## METHODS #######
+########################
 
 def save_to_netcdf(outfilename, dimsdict, arraydict, unitsdict):
     '''
@@ -181,33 +189,14 @@ def read_GC_station(station):
     stndict['Altitudes']=Altitude_mids
     return(stndict)
 
-def read_GC_global(subset=[-180,-90,180,90], savetofile=None, readfromfile=None):
+def read_GC_global():
     '''
     Read the GEOS-CHEM dataset, created by running pncgen on the GC trac_avg files produced by UCX_2x25 updated run
     Optionally subset to some region
     Optionally write to new file (will be smaller than all the GC files)
     Optionally read from new file (written with save to file)
-    Return dictionary:
-        psurf: hpa at level surface
-        time: Hrs since sliced bread
-        altitudes: m
-        O3ppb: ppb, (GEOS_CHEM SAYS PPBV)
-        boxheight: m
-        tppressure: hPa
-        tpaltitude: m
-        tpaltitudeforTropVC: m used to calc tropospheric VC
-        tplevel: level of tropopause
-        O3density: molecules/cm3
-        O3tropVC: molecules/cm2
-        airdensity: molecules/m3
-        pmids: hPa
-        pedges: hPa
-        date: datetime structure of converted Taus
+    Returns: GChem class
     '''
-    if readfromfile is not None:
-        # Structure is saved in this file:
-        assert False, "IMPLEMENT THIS"
-    
     files=glob(_trac_avgs)
     files.sort()
     data=dict()
@@ -227,408 +216,11 @@ def read_GC_global(subset=[-180,-90,180,90], savetofile=None, readfromfile=None)
         data['tpaltitude']=fh.variables['TR-PAUSE_TP-HGHT'][...]*1e3 # km -> m
         data['tplevel']=fh.variables['TR-PAUSE_TP-LEVEL'][...] # dimensionless
         data['boxheight'] = fh.variables['BXHGHT-$_BXHEIGHT'][...] # m
-        data['airdensity']=fh.variables['BXHGHT-$_N(AIR)'][...] # molecules / m3
+        data['airdensity']=fh.variables['BXHGHT-$_N(AIR)'][...]*1e-6 # molecules / m3 -> molecules/cm3
         data['psurf']=fh.variables['PEDGE-$_PSURF'][...] # hpa at bottom of each vertical level
-        
-        
     
-    # dimensions
-    n_t, n_z, n_y, n_x=len(data['time']), 72, len(data['latitude']), len(data['longitude'])
-    
-    # Density Column = VMR * AIRDEN [ O3 molecules/cm3 ]
-    data['O3density']= data['O3ppb'] * 1e-9 * data['airdensity'] * 1e-6 # ppb -> vmr and /m3 -> /cm3
-    
-    # Get Date from Tau
-    data['date'] = np.array(ttd(data['time']))
-    
-    # geometric pressure mid points
-    pedges=np.append(data['psurf'],np.zeros([n_t,1,n_y,n_x]),axis=1)
-    pmids = np.sqrt(pedges[:, 0:n_z,:,:] * pedges[:, 1:(n_z+1),:,:]) # geometric mid point
-    data['pmids']=pmids
-    data['pedges']=pedges
-    
-    # Altitude mid points from boxheights
-    data['altitudes']=np.cumsum(data['boxheight'],axis=1)-data['boxheight']/2.0
-    
-    # Tropospheric O3 Column!!!!
-    TVC = np.ndarray([n_t,n_y,n_x]) + np.NaN
-    Atrop=np.ndarray([n_t,n_y,n_x]) + np.NaN
-    altm=np.cumsum(data['boxheight'], axis=1) # m
-    # For each vertical column of data
-    for i in range(n_t):
-        tpi=data['tplevel'][i,0,:,:]
-        
-        # tpinds = tropospheric part of column
-        levs=np.arange(1,72.5)
-        levs=np.transpose(np.tile(levs[:], (n_x,n_y,1)))
-        #inds=np.where(levs<tpi)
-        
-        # ozone and boxheight for the entire troposphere
-        O3i=data['O3density'][i,...] # molecules/cm3
-        bhi=data['boxheight'][i,...]*100 # metres -> centimeters
-        
-        # Fraction of TP level which is tropospheric
-        # frac= tpi - tpi.astype(int)
-        
-        #starttime=datetime.now()
-        # working out how to do this dimensionally was too hard, just loop over..
-        for x in range(n_x):
-            for y in range(n_y):
-                inds=np.where(levs[:,y,x]<=tpi[y,x])[0]
-                #TVC[i,y,x] = np.sum(O3i[inds,y,x]*bhi[inds,y,x],axis=0) # molecules/cm2
-                TVC[i,y,x] = np.inner(O3i[inds,y,x], np.transpose(bhi[inds,y,x]))
-                Atrop[i,y,x]=altm[i,inds[-1],y,x] # m
-                ## Add fractional part?
-        #endtime=datetime.now()
-        #print("Took %8.2f seconds to get Trop VC for one month"%(endtime-starttime).total_seconds())
-        # np.sum takes ~ 0.32 seconds
-        # np.inner takes ~ 0.27 seconds
-    # sanity check:
-    nearzero=np.squeeze(data['tpaltitude'])-Atrop
-    assert np.mean(nearzero) < 1000, "TP Altitude changing by more than 1km"
-    data['O3tropVC']=TVC # molecs/cm2
-    data['tpaltitudeforTropVC']=Atrop # m
-    
-    if savetofile is not None:
-        assert False, 'IMPLEMENT THIS'
-    
-    return(data)
-    
-# Sonde data class, created to hold stuff
-#
-class sondes:
-    '''
-    Class for holding sondes information at particular site
-    '''
-    def __init__(self):
-        # class variables
-        self.name = ''
-        self.lat = 0
-        self.lon = 0
-        self.alt = 0 # site altitude (m)
-        
-        # these have one dim
-        self.dates = []
-        self.edates= [] # event dates
-        self.edatedeltas= [] # sonde datetime - event datetime
-        self.etype = [] # event is either from a cutoff low, a front, or something else
-        self.einds = [] # event indices
-        self.tpo3 = [] #ozone tropopause (km)
-        self.tplr = [] # lapse rate tropopause (km)
-        self.tp = [] # minimum tropopause (km)
-        self.tpinds = [] # index of min tropopause
-        self.tropvc = [] # tropospheric vertical column molecs/cm2
-        
-        # the following will have 2 dims: [dates,heights]
-        self.press = 0 # heights(hPa) 
-        self.gph = 0 # heights(m)
-        self.o3pp = 0 # partial pressure(mPa)
-        self.o3ppbv = 0 # ppbv[dates,heights]
-        self.o3dens = 0 # molecules/cm3
-        self.rh = 0 # rel humidity
-        self.temp = 0 # temperature(Celcius)
-        # extras
-        self.seasonalstds = 0 # when making seasonal averages store the stds
-        
-    def count(self):
-        return len(self.dates)
-    def len(self):
-        return len(self.dates)
-    def __repr__(self): # if callled within prompt do this
-        return self.__str__()
-    def __str__(self): # what gets called when printing this class
-        return("sondes(class):\n name, lat, lon, alt(m), "+\
-                "dates, press(hPa), gph(km), o3pp(mPa), o3ppbv, rh, temp(C)")
-    def utc_offset(self):
-        # map the inputs to the function blocks
-        offsets = {"Melbourne":11, "Macquarie":11,"Davis":7}
-        return(offsets[self.name])
-    def local_dates(self):
-        # return stored dates plus utc offset
-        offset = timedelta(hours=self.utc_offset())
-        return([x+offset for x in self.dates])
-    def get_index(self, date):
-        # return index of closest matching profile
-        closest=sorted(self.dates, key=lambda d : abs (d-date))[0]
-        di = self.dates.index(closest)
-        return di
-    def get_profile(self, date):
-        # return (gph, o3ppbv, temp, rh, dates, tp, tplr, tpo3) profile
-        if np.size(self.tp) < 2:
-            self._set_tps()
-        # find closest matching date
-        closest = sorted(self.dates, key = lambda d : abs( d - date))[0]
-        di = self.dates.index(closest)
-        profile=(self.gph[di,:], self.o3ppbv[di,:], self.temp[di,:],self.rh[di,:], \
-            self.dates[di], \
-            self.tp[di], self.tplr[di], self.tpo3[di])
-        return profile
-    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16)):
-        import matplotlib.pyplot as plt
-        prof=self.get_profile(date)
-        date2=prof[4]
-        xl,xr=0,xtop
-        yl,yr=0,ytop
-        yaxi=prof[0]/1e3
-        
-        fig=plt.figure(figsize=size)
-        ax1= fig.add_subplot(111)
-        ax1.plot(prof[1],yaxi,'k',linewidth=2.0)
-        ax2 = ax1.twiny()
-        ax2.plot(prof[2],yaxi,'r')
-        ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
-        ax1.set_ylim(yl,yr)
-        ax1.set_xlim(xl,xr)
-        ax2.set_xlim(-55,25)
-        #plt.yscale('log')
-        
-        ax1.set_ylabel('GPH (km)')
-        ax2.set_xlabel('Temp (C)')
-        ax1.set_xlabel('Ozone (ppbv)')
+    return(GChem(data))
 
-        title=self.name+' '+date2.strftime('%Y-%m-%d')
-        ax1.set_title(title,x=0.5,y=0.93)
-        return(fig)
-    def _set_tps(self):
-        
-        polar = (np.abs(self.lat) > 60)
-
-        #for each profile
-        ns= len(self.dates)
-        for si in np.arange(0,ns):
-            ppbv=np.array(self.o3ppbv[si,:])
-            Z=np.array(self.gph[si,:]) / 1e3
-            tpo3=-1.0
-
-            ## FIRST
-            ## set the ozone tropopause
-            dmrdz = (ppbv[0:-1]-ppbv[1:])/(Z[0:-1]-Z[1:])
-            
-            
-            # for each dvmr/dz gt 60 with ppbv > 80 check the .5 to 2 k higher values are gt 110
-            # check ranges:
-            z1=np.where(dmrdz>60)[0]
-            z2=np.where(ppbv[0:-2] > 80)[0]
-            testrange=np.intersect1d(z1,z2)
-            upper = [ 2.0, 1.5 ][polar]
-            if np.size(testrange) < 2 or np.size(Z) < 2 :
-                self.tpo3.append(-1)
-                self.tplr.append(-1)
-                continue
-            for ind in testrange:
-                
-                alt=Z[ind]
-                #print "shape(Z):", np.shape(Z)
-                #print "ind:", ind
-                #print "testrange:", testrange
-                #print "alt:", alt
-                if np.isnan(alt) : continue
-                z1=np.where(Z >= (alt+0.5))[0]
-                z2=np.where(Z <= (alt+upper))[0]
-                checks = np.intersect1d(z1,z2)
-                #print "checks:", checks
-                checks=list(checks)
-                ##if all the indices in our check range are gt 110 ppbv we are finished
-                if ((ppbv[checks] > 110 ).all()):
-                    tpo3=alt
-                    break
-            self.tpo3.append(tpo3)
-            
-            ## SECOND 
-            ## find temperature tropopause
-            tplr=-1.0
-            rate=-2.0
-            minh=2.0
-            temp=np.array(self.temp[si,:])
-            temp=temp[Z > minh]
-            Z=Z[Z>minh]
-            lapse = (temp[0:-1]-temp[1:])/(Z[0:-1]-Z[1:])
-            lapse = np.append(lapse,0)
-            # lapse rate should be greater than -2 over two kilometers
-            testrange=np.where(lapse > rate)[0]
-            for ind in testrange[0:-1]:
-                alt=Z[ind]
-                z1=np.where(Z > alt)[0]
-                z2=np.where(Z < (alt+2.0))[0]
-                checks =np.intersect1d(z1,z2) 
-                
-                if np.mean(lapse[checks]) > rate :
-                    tplr=alt
-                    break
-            self.tplr.append(tplr)
-        ## FINALLY
-        # tp is minimum of lapse rate and ozone tropopause
-        self.tp = np.minimum(self.tplr,self.tpo3).tolist()
-        for i in range(ns):
-            Z=np.array(self.gph[i,:])/1e3
-            if self.tp[i]  == -1:
-                self.tpinds.append(np.NaN)
-            else:
-                self.tpinds.append(np.where(Z == self.tp[i])[0][0])
-
-    def get_seasonal(self):
-        '''
-        Return a sondes class which has the average seasonal data for this class
-        Not Yet Implemented
-        '''
-        
-        # need to rebin everything using a standard height array
-        #
-        new_profile_points=1000
-        
-        ndat=sondes()
-        ndat.name=self.name
-        ndat.lat=self.lat
-        ndat.lon=self.lon
-        ndat.alt=self.alt
-        ndat.dates=['J','F','M','A','M','J','J','A','S','O','N','D']
-        ndat.o3pp = np.ndarray([12,new_profile_points])
-        
-        # create seasonal averages of other variables 
-        #for each month
-        for i in range(1,13): # 1..12
-            #indexes of month i
-            mi=self.month_indices(i)
-              
-            #get average partial pressure
-            # for now just surface pp
-            ndat.o3pp[i,0]= np.nanmean(self.o3pp[mi,0])
-            
-            # average of tps:
-            #ndat.tps[i] = np.nanmean(tps[mi])
-            
-    
-        return(ndat)
-    
-    def _set_density(self):
-        '''
-        PV=nRT:
-        n/V [moles/cm3] = P/RT
-        n/V * N_av [molecules/cm3] = P*N_av/RT
-        n_O3 / V * N_av = P_O3 * N_av/RT
-        
-        P is pressure [hPa]
-        P_O3 = vmr * P
-        N_av = avocado's number [molecules/mole]
-        R = gas constant [ cm3 hPa / ( K mole ) ]
-        T = Temperature [K]
-        
-        Tropospheric VC= sum up to TP of (density * height)
-        '''
-        R=8.3144621e4 # [ cm3 hPa / K / mole ]
-        N_av=6.0221409e+23 # Avegadro
-        vmr=self.o3ppbv * 1e-9 # ppb to vmr
-        P = np.array(self.press) # hPa
-        T = np.array(self.temp) + 273.15 # celcius to Kelvin        
-        self.o3dens = vmr * P / R / T * N_av
-        
-        # vertical column profile [molecs/cm2] = dens[molecs/cm3]*height[cm]
-        Z=self.gph * 100
-        edgesshape=list(Z.shape)
-        edgesshape[1]+=1
-        Zedges=np.zeros(edgesshape)
-        Zedges[:,0] = Zedges[:,0] + self.alt*100
-        Zedges[:,1:-1] = (Z[:, 0:-1] + Z[:, 1:]) / 2.0
-        Zedges[:,-1] =Z[:,-1]
-        # height of each vertical level
-        Zheights= Zedges[:,1:]-Zedges[:, 0:-1] 
-        vcp = self.o3dens * Zheights
-        for i in range(len(self.dates)):
-            tpind=self.tpinds[i]
-            if tpind is np.NaN:
-                self.tropvc.append(np.NaN)
-            else:
-                # doesn't include tropopause layer
-                self.tropvc.append( np.nansum( vcp[i, 0:tpind] ) )
-        
-    def _set_events(self):
-        '''
-        return indices of dates matching event days in the CSVs (created from IDL)
-        In this case the csv's are close to UTC+0 I think
-        '''
-        # read CSVs
-        import csv
-        csvs={"Melbourne":"events_melb.csv",
-              "Macquarie":"events_mac.csv",
-              "Davis":"events_dav.csv"}
-
-        filename="data/"+csvs[self.name]
-        with open(filename, 'rb') as csvfile:
-            reader = csv.reader(csvfile)
-            for row in reader:
-                ir=[int(x) for x in row] # change strings to ints
-                edate=datetime(ir[0],ir[1],ir[2],ir[3])
-                # sort by difference between csv date and sonde date
-                closest = sorted(self.dates, key = lambda d : abs( d - edate))[0]
-                # add closest date index
-                cind=self.dates.index(closest)
-                self.einds.append(cind)
-                self.edates.append(edate)
-                self.edatedeltas.append(self.dates[cind].now() - edate.now())
-    
-    def degrade_vertically(self, gc):
-        '''
-        Degrade data to match GEOS Chem vertical levels
-        input: gc
-            station which get's returned from read_GC_station
-        '''
-        newinds=[]
-        newppbv =[]
-        newgph  =[]
-        # For each sonde date, if there is a matching GEOS-Chem profile then we degrade the sonde
-        for sind, date in enumerate(self.dates):
-            gcdates=gc['Date']
-            ymd = np.array([ d.strftime('%Y%m%d') for d in gcdates])
-            ind=np.where( ymd=='%4d%02d%02d'%(date.year,date.month,date.day) )[0]
-            
-            # if no matching model data then skip date
-            if len(ind) == 0:
-                continue
-            ind=ind[0]
-            
-            # Degrade sonde to GEOS vertical resolution
-            # first what are the GEOS edges
-            GCedges=np.zeros(73)
-            GCedges[1:]=np.cumsum(gc['BXHEIGHT'][ind,:]) # in metres
-            GCmids=gc['Altitudes'][ind,:] # in metres
-            salts=self.gph[sind,:] # in metres
-            prof = np.zeros(72)
-            #degrade prof to average within GC box
-            for i in range(72):
-                prof[i]=np.mean(self.o3ppbv[sind, (GCedges[i] < salts) * ( salts < GCedges[i+1]) ])
-            newinds.append(sind)
-            newppbv.append(prof)
-            newgph.append(GCmids)
-        
-        # update sonde where simple to do so
-        self.dates = [self.dates[i] for i in newinds]
-        self.edates= [] # event dates
-        self.edatedeltas= [] # sonde datetime - event datetime
-        self.einds = [] # event indices
-        self.tpo3 = [self.tpo3[i] for i in newinds] #ozone tropopause (km)
-        self.tplr = [self.tplr[i] for i in newinds]# lapse rate tropopause (km)
-        self.tp = [self.tp[i] for i in newinds] # minimum tropopause (km)
-        self.tpinds = [self.tpinds[i] for i in newinds] # index of min tropopause
-        self.tropvc = [self.tropvc[i] for i in newinds] # tropospheric vertical column molecs/cm2
-        
-        # the following will have 2 dims: [dates,heights]
-        self.press = 0 # heights(hPa) 
-        self.gph = np.array(newgph) # heights(m)
-        self.o3pp = 0 # partial pressure(mPa)
-        self.o3ppbv = np.array(newppbv) # ppbv[dates,heights]
-        self.o3dens = 0 # molecules/cm3
-        self.rh = 0 # rel humidity
-        self.temp = 0 # temperature(Celcius)
-        
-        
-
-# end of header
-_endofheader="#PROFILE"
-_headerlines=51
-
-########################
-######## METHODS #######
-########################
 def _read_file(fpath):
     '''
     return data for single file
