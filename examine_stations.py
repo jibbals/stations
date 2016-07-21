@@ -10,7 +10,7 @@
 
 # These stop python from displaying images, faster to save images this way
 import matplotlib
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 matplotlib.rcParams.update({'font.size': 15})
 
 # plotting, reading ncdf, csv, maths
@@ -31,34 +31,6 @@ seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','da
 ###########################################################################
 #####################    Functions                         ################
 ###########################################################################
-
-def check_GC_output():
-    
-    # read in GC data
-    GCData=fio.read_GC_global()
-    
-    # Check the surface ozone
-    data=GCData.O3density[0,0] # take first month, surface layer
-    
-    plt.figure(figsize=(14,10))
-    GCData.mapData(data,label="Molecules cm$^{-3}$")
-    plt.title("GEOS-Chem simulated surface ozone (Jan 2004)")
-    pltname="images/GEOS-Chem_surface_ozone_example.png"
-    plt.savefig(pltname)
-    print(pltname+ " saved")
-    plt.close()
-    
-    # Now check the Tropospheric VC
-    data=GCData.O3tropVC[0] # first time slice
-    
-    plt.figure(figsize=(14,10))
-    GCData.mapData(data,label="Molecules cm$^{-2}$")
-    plt.title("GEOS-Chem simulated tropospheric ozone Column (Jan 2004)")
-    plt.xlabel("$\Sigma_{z(troposphere)}($ Ozone ppb x $10^{-9}$x boxheight x$ N_{Air})$",fontsize=20)
-    pltname="images/GEOS-Chem_tropospheric_VC_example.png"
-    plt.savefig(pltname)
-    print(pltname+ " saved")
-    plt.close()
 
 def SO_extrapolation():
     '''
@@ -107,7 +79,7 @@ def SO_extrapolation():
     
     ax=axes[1]
     plt.sca(ax)
-    plt.plot(X, SOTropO3, label="SO Tropospheric VC average")
+    l1=plt.plot(X, SOTropO3, 'k', linewidth=2, label="Trop O$_3$ VC")
     plt.title("Tropospheric ozone VCs in SO (GEOS-Chem)")
     plt.xlim([-0.5, 11.5])
     plt.xlabel('Month')
@@ -117,14 +89,15 @@ def SO_extrapolation():
     # plot percentages
     newax=plt.twinx()
     # likelihood pct * pct contribution
-    newax.plot(X,l*f*100, color='teal', label='STT Contribution Factor')
-    #newax.plot(X,l*100, color='magenta', label='STT likelihood')
+    l2=newax.plot(X,f*100, color='teal', label='STT fraction')
+    l3=newax.plot(X,l*100, color='magenta', label='STT likelihood')
     
     # axes and legends
-    newax.legend(loc=1)
+    #newax.legend(loc=1)
     newax.set_ylabel('percent')
-    newax.set_ylim([0,2])
-    ax.legend(loc=2)
+    newax.set_ylim([0,35])
+    lns=l1+l2+l3
+    plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
     ax.set_ylabel('Flux (molecules/cm2)')
     plt.xlim([-0.5, 11.5])
     ax.set_xlabel('Month')
@@ -699,6 +672,34 @@ def correlation(outfile='images/correlations.png'):
     print("Image saved to %s"%outfile)
     plt.close(f3)
 
+def check_GC_output():
+    
+    # read in GC data
+    GCData=fio.read_GC_global()
+    
+    # Check the surface ozone
+    data=GCData.O3density[0,0] # take first month, surface layer
+    
+    plt.figure(figsize=(14,10))
+    GCData.mapData(data,label="Molecules cm$^{-3}$")
+    plt.title("GEOS-Chem simulated surface ozone (Jan 2004)")
+    pltname="images/GEOS-Chem_surface_ozone_example.png"
+    plt.savefig(pltname)
+    print(pltname+ " saved")
+    plt.close()
+    
+    # Now check the Tropospheric VC
+    data=GCData.O3tropVC[0] # first time slice
+    
+    plt.figure(figsize=(14,10))
+    GCData.mapData(data,label="Molecules cm$^{-2}$")
+    plt.title("GEOS-Chem simulated tropospheric ozone Column (Jan 2004)")
+    plt.xlabel("$\Sigma_{z(troposphere)}($ Ozone ppb x $10^{-9}$x boxheight x$ N_{Air})$",fontsize=20)
+    pltname="images/GEOS-Chem_tropospheric_VC_example.png"
+    plt.savefig(pltname)
+    print(pltname+ " saved")
+    plt.close()
+
 ###########################################################################
 #####################    Run Section                       ################
 ###########################################################################
@@ -708,13 +709,13 @@ if __name__ == "__main__":
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    #monthly_profiles()
+    monthly_profiles()
     #monthly_profiles(degradesondes=True)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()
-    SO_extrapolation()
+    #SO_extrapolation()
     #[monthly_GC_profiles(hour=h) for h in [0,6,12,18] ]
     
