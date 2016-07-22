@@ -69,6 +69,7 @@ def SO_extrapolation():
     f=np.mean(fluxpct, axis=1)
     l=np.mean(likelihood, axis=1)
     flux = SOTropO3 * f * l
+    print("%4e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%np.sum(flux))
     
     plt.clf()
     fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
@@ -128,6 +129,7 @@ def seasonal_profiles(hour=0, degradesondes=False):
     # Set up plot axes
     f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
     axes[3,1].set_xlabel('Ozone (ppb)')
+    axes[3,0].set_ylabel('Altitude (km)')
     xlim=[0,125]
     axes[3,1].set_xlim(xlim)
     ylim=[0,14]
@@ -220,8 +222,12 @@ def seasonal_profiles(hour=0, degradesondes=False):
             plt.text(.72*xlim[1], .5, "%d sondes"%s_counts[i])
             if i == 0:
                 plt.title(stn_name)
-            if j == 0:
-                plt.ylabel(seasonstr[i])
+            if j == 2:
+                twinax=plt.twinx()
+                twinax.set_yticks([]) # turn off ticks
+                twinax.set_ylabel(seasonstr[i])
+                
+                
         
     # set title, and layout, then save figure
     f.suptitle("Seasonally averaged profiles",fontsize=24)
