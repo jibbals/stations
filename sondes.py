@@ -1,146 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Jul 20 08:34:11 2016
+Created on Mon Jul 25 09:03:57 2016
 
-Classes for GEOS-Chem Dataset and Sonde data set
-
-Me das tu numero?
 @author: jesse
 """
 
 import numpy as np
 from datetime import datetime, timedelta
-from tau_to_date import tau_to_date as ttd
+# read CSVs
+import csv
 
-
-##################################################################
-###### GEOS-Chem, created to hold stuff         ##################
-##################################################################
-class GChem:
-    '''
-    Class to hold and access GC data
-    '''
-    def __init__(self, data):
-        '''
-        Initiallise using dictionary read in by fio.py
-        '''
-        
-        # one dimensional things
-        self.lats = data['latitude']            #  -90 to 90 degrees
-        self.latbounds = data['latbounds']    
-        self.lons = data['longitude']           # -180 to 180 degrees
-        self.lonbounds = data['lonbounds']
-        self.taus = data['time']                # Hours since 19850101 000000
-        self.dates = np.array(ttd(self.taus))   # Array of datetimes
-        
-        # latlon indexes of davis, macca, melb
-        self.siteinds=[(0,0),(0,0),(0,0)]
-        
-        # More Dimensional Things: [ time, lev, lat, lon]
-        self.O3ppb = data['O3ppb']              # ppb
-        self.airdensity = data['airdensity']    # molecules/cm3
-        self.tppressure = data['tppressure']    # hPa
-        self.tpaltitude = data['tpaltitude']    # m
-        self.tplevel = data['tplevel']          # dimensionless
-        self.boxheight = data['boxheight']      # m
-        self.psurf = data['psurf']              # hpa at bottom of each vertical level
-        
-        n_t, n_z, n_y, n_x=len(data['time']), 72, len(data['latitude']), len(data['longitude'])
-        self.dims=np.array([n_t,n_z,n_y,n_x])
-        
-        # geometric pressure mid points, and pressure edges: hPa
-        self.pedges=np.append(data['psurf'],np.zeros([n_t,1,n_y,n_x]),axis=1)
-        self.pmids = np.sqrt(self.pedges[:, 0:n_z,:,:] * self.pedges[:, 1:(n_z+1),:,:]) # geometric mid point
-        
-        # Density Column = VMR * AIRDEN [ O3 molecules/cm3 ]
-        self.O3density = data['O3ppb'] * 1e-9 * data['airdensity'] # 1e-9*ppb = vmr
-                
-        # Altitude mid points from boxheights: m
-        self.altitudes = np.cumsum(data['boxheight'],axis=1)-data['boxheight']/2.0
-        
-        # Tropospheric O3 Column!!!!
-        TVC = np.ndarray([n_t,n_y,n_x]) + np.NaN
-        Atrop=np.ndarray([n_t,n_y,n_x]) + np.NaN
-        altm=np.cumsum(data['boxheight'], axis=1) # m
-        # For each vertical column of data
-        for i in range(n_t):
-            tpi=data['tplevel'][i,0,:,:]
-            
-            # tpinds = tropospheric part of column
-            levs=np.arange(1,72.5)
-            levs=np.transpose(np.tile(levs[:], (n_x,n_y,1)))
-            #inds=np.where(levs<tpi)
-            
-            # ozone and boxheight for the entire troposphere
-            O3i=self.O3density[i,...] # molecules/cm3
-            bhi=data['boxheight'][i,...]*100 # metres -> centimeters
-            
-            # working out how to do this dimensionally was too hard, just loop over..
-            for x in range(n_x):
-                for y in range(n_y):
-                    inds=np.where(levs[:,y,x]<=tpi[y,x])[0]
-                    #TVC[i,y,x] = np.sum(O3i[inds,y,x]*bhi[inds,y,x],axis=0) # molecules/cm2
-                    TVC[i,y,x] = np.inner(O3i[inds,y,x], np.transpose(bhi[inds,y,x]))
-                    Atrop[i,y,x]=altm[i,inds[-1],y,x] # m
-                    ## Add fractional part?
-            # np.sum takes ~ 0.32 seconds, while np.inner takes ~ 0.27 seconds
-        # sanity check:
-        nearzero=np.squeeze(data['tpaltitude'])-Atrop
-        assert np.mean(nearzero) < 500, "TP Altitude changing by more than 500m"
-        
-        self.O3tropVC = TVC                 # molecs/cm2
-        self.tpaltitudeforTropVC = Atrop    # m
-        
-    def count(self):
-        return len(self.taus)
-    def len(self):
-        return len(self.taus)
-    def mapData(self, data, label=None,lon0=-179,lat0=-80,lon1=179,lat1=80):
-        from mpl_toolkits.basemap import Basemap
-        
-        lons,lats=np.meshgrid(self.lonbounds, self.latbounds)
-        m=Basemap(lon0,lat0,lon1,lat1)
-        m.pcolormesh(np.transpose(lons),np.transpose(lats),np.transpose(data), latlon=True)
-        m.drawcoastlines()
-        cb= m.colorbar()
-        if label is not None:
-            cb.set_label(label)
-        return m,cb
-    
-    def southernOceanTVC(self, north=-55,south=-85):
-        '''
-        Get the Tropospheric Vertical Column averaged into months
-        Returns:
-            molecules/cm2 [12 months] 
-        '''
-        data=np.zeros(12)
-        allmonths= np.array([ d.month for d in self.dates ])
-        latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
-        SOTVC=self.O3tropVC[:,latinds,:]
-        for i in range(12):
-            minds=np.where(allmonths == i+1)[0]
-            data[i]=np.mean(SOTVC[minds])
-        return data
-    
-    def saveToFile(self):
-        '''
-        Save the shit to a netcdf file
-        '''
-        assert False, "Not Implemented"
-    
-    def readFromFile(self, filename):
-        '''
-        Read from a specific file, written to using the SaveToFile() function
-        '''
-        assert False, "Not Implemented"
-        return 0
-    
-    def subset(self, subset=[-180,-90,180,90]):
-        '''
-        Return copy of class subsetted to some space...
-        '''
-        assert False, "Not Implemented"
-        return 0
+_event_type={0:"misc",1:"front",2:"cutoff"}
 
 ##################################################################
 ###### Sonde data class, created to hold stuff  ##################
@@ -149,6 +19,8 @@ class sondes:
     '''
     Class for holding sondes information at particular site
     '''
+    # Event Types:
+    _event_types={0:'misc',1:'front',2:'cutoff'}
     def __init__(self):
         # class variables
         self.name = ''
@@ -160,10 +32,13 @@ class sondes:
         self.dates = []
         self.edates= [] # event dates
         self.edatedeltas= [] # sonde datetime - event datetime
-        self.etype = [] # event is either from a cutoff low, a front, or something else
-        self.einds = [] # event indices
+        self.edepth= [] # sonde depth in km, ported from IDL
         self.eflux = [] # EVENT FLUX FROM GEOS-CHEM IN MOLECULES/CM2
+        self.einds = [] # event indices
+        self.epeak = [] # event peak altitudes (km)
+        self.etype = [] # event is either from a cutoff low, a front, or something else
         self.etropvc = [] # TROP VC CALCULATED IN IDL
+        self.fireflagged=[] # Events could be due to biomass burning
         self.tpo3 = [] #ozone tropopause (km)
         self.tplr = [] # lapse rate tropopause (km)
         self.tp = [] # minimum tropopause (km)
@@ -254,7 +129,6 @@ class sondes:
             ## FIRST
             ## set the ozone tropopause
             dmrdz = (ppbv[0:-1]-ppbv[1:])/(Z[0:-1]-Z[1:])
-            
             
             # for each dvmr/dz gt 60 with ppbv > 80 check the .5 to 2 k higher values are gt 110
             # check ranges:
@@ -397,8 +271,7 @@ class sondes:
         return indices of dates matching event days in the CSVs (created from IDL)
         In this case the csv's are close to UTC+0 I think
         '''
-        # read CSVs
-        import csv
+        
         csvs={"Melbourne":"events_melb.csv",
               "Macquarie":"events_mac.csv",
               "Davis":"events_dav.csv"}
@@ -406,6 +279,8 @@ class sondes:
         filename="data/"+csvs[self.name]
         with open(filename, 'rb') as csvfile:
             reader = csv.reader(csvfile)
+            #YYYY	MM	DD	HH	tropozone	flux	peak	tp	fire	etype
+            header=reader.next()
             for row in reader:
                 # Y, M, D, H
                 ir=[int(x) for x in row[0:4]] # change strings to ints
@@ -423,6 +298,16 @@ class sondes:
                 vcs = [float(x) for x in row[4:6]]
                 self.etropvc.append(vcs[0])
                 self.eflux.append(vcs[1])
+                
+                # read the event peak altitude (km)
+                self.epeak.append(float(row[6]))
+                self.edepth.append(float(row[7])-float(row[6]))
+                
+                # read weather the event may be due to biomass burning
+                self.fireflagged.append(row[8] == "1")
+                
+                # finally grab the likely cause of the event (misc,front,cutoff)
+                self.etype.append(int(row[9]))
     
     def degrade_vertically(self, gc):
         '''

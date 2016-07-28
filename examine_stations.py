@@ -8,13 +8,15 @@
 #IMPORTS:
 #
 
-# These stop python from displaying images, faster to save images this way
 import matplotlib
+# Stop python from displaying images, faster to save images this way
 matplotlib.use('Agg')
+
+# font size global
 matplotlib.rcParams.update({'font.size': 15})
 
-# plotting, reading ncdf, csv, maths
-import matplotlib.pyplot as plt # plotting module
+# plotting, dates, maths
+import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 import numpy as np
 from datetime import datetime
@@ -32,12 +34,121 @@ seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','da
 #####################    Functions                         ################
 ###########################################################################
 
+def summary_plots():
+    '''
+    Summary of seasonality, STT altitude, STT depth for each site.
+    '''
+    # read sonde event data
+    sondes=[fio.read_sonde(s) for s in range(3)]
+    
+    # set up plot limits, labels etc..
+    # three seperate summary bar plots.
+    titles=['Event '+s for s in ['seasonality','altitude','depth']]
+    pltnames=[ 'summary_'+s+'.png' for s in ['season','altitude','depth'] ]
+    evcolours=['cyan','darkblue','darkcyan','red'] # colours based on event type or burning
+    
+    linewidth=0.0
+    krange=[1,2,0] # Order for barplot stacks
+    label=['frontal','cutoff','misc','fire']
+    
+    # Three kinds of plot will require 3 functions
+    def plot_season(sonde,xlab=False,ylab=False, legend=False):
+        X = np.arange(12)    # the x locations for the barchart
+        left=X-0.5 # left side for barplot bins
+        bins=np.linspace(-0.5,11.5,13)
+        width=0.9 # bar widths can be array
+        
+        edates=sonde.edates
+        etypes=np.array(sonde.etype)
+        fireinds=np.where(np.array(sonde.fireflagged))[0]
+        
+        # loop over the three types we want to plot.
+        ph=[] # plot handles
+        prev=np.zeros(12)
+        for k in krange:
+            inds=list(set(np.where(etypes == k)[0]) - set(fireinds))
+            mons=[edates[i].month-1 for i in inds]
+            histo=np.histogram(mons,bins)[0]
+            ph.append(plt.bar(left, histo, width, color=evcolours[k],bottom=prev,linewidth=linewidth))
+            prev=histo+prev
+        # add fires 
+        firem=[edates[i].month-1 for i in fireinds]
+        histo=np.histogram(firem,bins)[0]
+        ph.append(plt.bar(left,histo,width,color=evcolours[3],bottom=prev,linewidth=linewidth))
+        
+        plt.xlim([-0.5, 11.5])
+        if xlab: plt.xlabel('month')
+        plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
+        if legend:
+            plt.legend( [ p[0] for p in ph ], label, loc='upper center')
+        if ylab: plt.ylabel('occurences')
+    
+    def plot_altitude(sonde,depth=False,xlab=False,ylab=False,legend=False):
+        xlims=[4,14]
+        bins=np.linspace(4,14,21)
+        left=bins[0:20]
+        width=0.5
+        prev=np.zeros(20)
+        
+        epeaks=sonde.epeak
+        if depth:
+            xlims=[0,9]
+            bins=np.linspace(0,9,19)
+            left=bins[0:18]
+            prev=np.zeros(18)
+            # due to difference in how I interpolate the sondes in IDL this doesn't work yet
+            epeaks=np.array([sonde.tp[s] for s in sonde.einds])-np.array(sonde.epeak)
+            # just use idl provided data
+            epeaks=sonde.edepth
+        
+        etypes=np.array(sonde.etype)
+        fireinds=np.where(np.array(sonde.fireflagged))[0]
+        
+        # loop over the three types we want to plot.
+        ph=[] # plot handles
+        for k in krange:
+            inds=list(set(np.where(etypes == k)[0]) - set(fireinds))
+            alts=[epeaks[i] for i in inds]
+            histo=np.histogram(alts,bins)[0]
+            ph.append(plt.bar(left, histo, width, color=evcolours[k],bottom=prev,linewidth=linewidth))
+            prev=histo+prev
+        # add fires 
+        firem=[epeaks[i] for i in fireinds]
+        histo=np.histogram(firem,bins)[0]
+        ph.append(plt.bar(left,histo,width,color=evcolours[3],bottom=prev,linewidth=linewidth))
+        
+        plt.xlim(xlims)
+        if xlab: plt.xlabel('Altitude (km)')
+        if legend:
+            plt.legend( [ p[0] for p in ph ], label, loc='upper right')
+        if ylab: plt.ylabel('occurences')
+    
+    def plot_depth(sonde,xlab=False,ylab=False,legend=False):
+        plot_altitude(sonde,depth=True,xlab=xlab,ylab=ylab,legend=legend)
+    
+    plot_funcs={0:plot_season, 1:plot_altitude, 2:plot_depth}
+    for i in range(3):
+        sonde=sondes[i]
+        f,axes=plt.subplots(3,1,sharex=True, figsize=(14,13))
+        
+        # plot the sonde summaries
+        for j, sonde in enumerate(sondes):
+            plt.sca(axes[j])
+            plot_funcs[i](sonde,ylab=(j==1),xlab=(j==2),legend=(j==1))
+            plt.title(sonde.name)
+        
+        f.suptitle(titles[i],fontsize=24)
+        plt.savefig(pltnames[i])
+        print("Saved: %s"%pltnames[i])
+        plt.close()
+        
+
 def SO_extrapolation():
     '''
     Rough estimate of Southern Oceanic STT flux
     '''
     # Read sondes data
-    sonde_files=[fio.read_site(s) for s in range(2)]
+    sonde_files=[fio.read_sonde(s) for s in range(2)]
     # monthly likelihood = occurrences/sondecount each month, for davis and macquarie
     n_s=len(sonde_files)
     likelihood=np.zeros([12,n_s])
@@ -118,7 +229,7 @@ def seasonal_profiles(hour=0, degradesondes=False):
     
     # read site data
     sites = [ fio.read_GC_station(p) for p in range(3) ]
-    o3sondes = [ fio.read_site(p) for p in range(3) ]
+    o3sondes = [ fio.read_sonde(p) for p in range(3) ]
     
     # some plot setups stuff
     months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
@@ -252,7 +363,7 @@ def monthly_profiles(hour=0, degradesondes=False):
     
     # read site data
     sites = [ fio.read_GC_station(p) for p in range(3) ]
-    o3sondes = [ fio.read_site(p) for p in range(3) ]
+    o3sondes = [ fio.read_sonde(p) for p in range(3) ]
     
     # some plot setups stuff
     titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
@@ -377,7 +488,7 @@ def event_profiles(station=2, data=None):
     dates=data['Date']
     
     ## Read the list of event dates from csv, created by blah.pro
-    sondes= fio.read_site(station)
+    sondes= fio.read_sonde(station)
     SO3s  = sondes.o3ppbv # [time, altitude]
     SAlts = sondes.gph/1000 # [time, altitude] GPH in km
     eventdates=sondes.edates # this info is read from a csv I create in IDL
@@ -432,7 +543,7 @@ def time_series(outfile='images/StationSeries.png'):
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
-    o3sondes = [fio.read_site(s) for s in range(3) ]
+    o3sondes = [fio.read_sonde(s) for s in range(3) ]
     
     # for each station do this
     # gc, os, f3ax, i = files[0], o3sondes[0], f3axes[0], range(len(files))[0]
@@ -542,7 +653,7 @@ def degraded_profile_comparison(station=0,date=datetime(2007,1,1)):
     
     # read site data
     site = fio.read_GC_station(station)
-    os = fio.read_site(station)
+    os = fio.read_sonde(station)
     
     # some plot setup stuff
     xlim=[0,125]
@@ -614,7 +725,7 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
-    o3sondes = [fio.read_site(s) for s in range(3) ]
+    o3sondes = [fio.read_sonde(s) for s in range(3) ]
     
     f3, f3axes = plt.subplots(3, 1, figsize=(12,16))
     f3axes[2].set_xlabel('Sonde tropospheric O3 relative anomaly')
@@ -718,7 +829,7 @@ def correlation(outfile='images/correlations.png'):
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
-    o3sondes = [fio.read_site(s) for s in range(3) ]
+    o3sondes = [fio.read_sonde(s) for s in range(3) ]
     
     f3, f3axes = plt.subplots(3, 1, figsize=(12,16))
     f3axes[2].set_xlabel('Sonde tropospheric O3 (molecules/cm2)')
@@ -844,7 +955,8 @@ if __name__ == "__main__":
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    seasonal_profiles(hour=0,degradesondes=False)
+    #seasonal_profiles(hour=0,degradesondes=False)
+    summary_plots()
     #monthly_profiles(hour=0,degradesondes=True)
     #anomaly_correlation()
     #correlation()

@@ -18,7 +18,10 @@ import csv
 from glob import glob 
 # local module, converts GC tau to datetimes
 from tau_to_date import tau_to_date as ttd
-from classes import sondes, GChem
+
+# data classes
+from GChem import GChem
+from sondes import sondes
 
 ########################
 ######## Globals #######
@@ -31,8 +34,6 @@ _sitenames = ['Davis','Macquarie','Melbourne']
 _Datafiles=[ _Datadir+d+'.nc' for d in _sitenames]
 _sondesdirs=[_sondesdir+s for s in _sitenames]
 _trac_avgs=_Datadir+"GC/trac_avg/*.nc"
-
-_event_type={0:"misc",1:"front",2:"cutoff"}
 
 # end of header
 _endofheader="#PROFILE"
@@ -257,7 +258,7 @@ def ozonetp(ppbv,gph,polar=0):
     # Not Implemented
     return(0)
     
-def read_site(site=0):
+def read_sonde(site=0):
     '''
     read data from sondes csv files
     PARAMETERS: site=0
