@@ -953,10 +953,10 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #check_GC_output()
-    #[event_profiles(s) for s in [0,1,2]]
+    [event_profiles(s) for s in [0,1,2]]
     #time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
-    summary_plots()
+    #summary_plots()
     #monthly_profiles(hour=0,degradesondes=True)
     #anomaly_correlation()
     #correlation()
