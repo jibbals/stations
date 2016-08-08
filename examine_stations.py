@@ -239,7 +239,6 @@ def seasonal_profiles(hour=0, degradesondes=False):
     seasonstr=['Summer','Autumn','Winter','Spring']
     seasonalcolours=seasonal_cmap.colors
     
-    
     # Set up plot axes
     f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
     axes[3,1].set_xlabel('Ozone (ppb)')
@@ -266,14 +265,16 @@ def seasonal_profiles(hour=0, degradesondes=False):
         TP = site['TropopauseAltitude'] / 1000.0
         Z  = site['Altitudes']/1000.0 
         s_Z  = np.array(sonde.gph) / 1000.0 
-        Znew= np.linspace(0,14,100)
+        # Interpolate to grid up to 14km
+        Znewlen = 200
+        Znew= np.linspace(0,14,Znewlen)
         # need to vertically bin the O3 profiles,
         # interpolated at 100 points up to 14km
-        means=np.zeros([4,100])
-        stds =np.zeros([4,100])
+        means=np.zeros([4,Znewlen])
+        stds =np.zeros([4,Znewlen])
         TPm = np.zeros(4)
-        s_means=np.zeros([4,100])
-        s_stds =np.zeros([4,100])
+        s_means=np.zeros([4,Znewlen])
+        s_stds =np.zeros([4,Znewlen])
         s_TPm = np.zeros(4)
         s_counts=np.zeros(4)
         
@@ -297,8 +298,8 @@ def seasonal_profiles(hour=0, degradesondes=False):
             s_counts[season]=s_n
             
             # each profile needs to be interpolated up to 14km
-            profs=np.zeros([n,100])
-            s_profs=np.zeros([s_n,100])
+            profs=np.zeros([n,Znewlen])
+            s_profs=np.zeros([s_n,Znewlen])
             for i in range(n):
                 profs[i,:] = np.interp(Znew, Z[inds[i],:], O3[inds[i],:],left=np.NaN,right=np.NaN)
             for i in range(s_n):
@@ -322,16 +323,24 @@ def seasonal_profiles(hour=0, degradesondes=False):
             s_Xl=s_X-s_stds[i,:]
             s_Xr=s_X+s_stds[i,:]
             
-            # plot averaged profiles + std
+            ## plot averaged profiles + std from the model
+            #
             plt.plot(X, Znew , linewidth=3, color=col['GEOS'])
-            plt.fill_betweenx(Znew, Xl, Xr, alpha=0.5, color=seasonalcolours[i])
+            #plt.fill_betweenx(Znew, Xl, Xr, alpha=0.5, color=seasonalcolours[i])
+            plt.plot(Xl, Znew, linewidth=2, color=col['GEOS'], linestyle='--')
+            plt.plot(Xr, Znew, linewidth=2, color=col['GEOS'], linestyle='--')
+            
+            ## plot averaged profiles + std from the sondes
+            #
             plt.plot(s_X, Znew , linewidth=3, color=col['Sonde'])
             plt.fill_betweenx(Znew, s_Xl, s_Xr, alpha=0.5, color=seasonalcolours[i])
-            # plot tropopause
+            
+            # plot tropopauses
             Y=TPm[i]
             s_Y=s_TPm[i]
             plt.plot(xlim, [Y, Y], '--', linewidth=2, color=col['GEOS'])
             plt.plot(xlim, [s_Y, s_Y], '--', linewidth=2, color=col['Sonde'])
+            
             # add count text to upper corner
             plt.text(.72*xlim[1], .5, "%d sondes"%s_counts[i])
             if i == 0:
@@ -340,10 +349,9 @@ def seasonal_profiles(hour=0, degradesondes=False):
                 twinax=plt.twinx()
                 twinax.set_yticks([]) # turn off ticks
                 twinax.set_ylabel(seasonstr[i])
-                
-                
-        
-    # set title, and layout, then save figure
+    
+    ## set title, and layout, then save figure
+    #
     f.suptitle("Seasonally averaged profiles",fontsize=24)
     outfile='images/eventprofiles/seasonalprofiles.png'
     if hour is not None: outfile='images/eventprofiles/seasonalprofiles%02d.png'%hour
@@ -354,7 +362,6 @@ def seasonal_profiles(hour=0, degradesondes=False):
     plt.savefig(outfile)
     print("Image saved to %s"%outfile)
     plt.close(f)
-  
 
 def monthly_profiles(hour=0, degradesondes=False):
     '''
@@ -966,8 +973,8 @@ if __name__ == "__main__":
     print ("Running")
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
-    time_series()
-    #seasonal_profiles(hour=0,degradesondes=False)
+    #time_series()
+    seasonal_profiles(hour=0,degradesondes=False)
     #summary_plots()
     #monthly_profiles(hour=0,degradesondes=True)
     #anomaly_correlation()
