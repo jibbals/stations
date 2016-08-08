@@ -17,7 +17,7 @@ matplotlib.rcParams.update({'font.size': 15})
 
 # plotting, dates, maths
 import matplotlib.pyplot as plt
-from matplotlib.dates import DateFormatter
+from matplotlib.dates import DateFormatter, date2num
 import numpy as np
 from datetime import datetime
 
@@ -29,7 +29,10 @@ import fio
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
-
+# colours for model vs sondes
+model_colour='red'
+data_colour='k'
+col={'GEOS':model_colour,'Sonde':data_colour}
 ###########################################################################
 #####################    Functions                         ################
 ###########################################################################
@@ -235,7 +238,7 @@ def seasonal_profiles(hour=0, degradesondes=False):
     months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
     seasonstr=['Summer','Autumn','Winter','Spring']
     seasonalcolours=seasonal_cmap.colors
-    col={'GEOS':'black','Sonde':'maroon'} # colours for model vs sondes
+    
     
     # Set up plot axes
     f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
@@ -369,7 +372,7 @@ def monthly_profiles(hour=0, degradesondes=False):
     titles=np.array([['Dec','Jan','Feb'],['Mar','Apr','May'],['Jun','Jul','Aug'],['Sep','Oct','Nov']])
     months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
     seasonalcolours=seasonal_cmap.colors
-    col={'GEOS':'black','Sonde':'maroon'} # colours for model vs sondes
+    
     #for each station do this
     # site,sonde=sites[1],o3sondes[1]
     for site, sonde in zip(sites, o3sondes):
@@ -517,7 +520,7 @@ def event_profiles(station=2, data=None):
         
         # plot the modelled event
         f=plt.figure(1,figsize=(6,10))
-        plt.plot(O3,Altitude,color='r', 
+        plt.plot(O3,Altitude,color=model_colour, 
                  linewidth=3, label='Modelled Profile')
         plt.ylabel('Altitude(km)')
         plt.xlabel('O3 (ppbv)')
@@ -526,7 +529,7 @@ def event_profiles(station=2, data=None):
         
         ## event profile on same plot
         Sind  = sondes.get_index(date)
-        plt.plot(SO3s[Sind,:], SAlts[Sind,:], color='k',
+        plt.plot(SO3s[Sind,:], SAlts[Sind,:], color=data_colour,
                  linewidth=3, label='Sonde Profile')
         plt.legend()
         plt.savefig(outfile)
@@ -557,15 +560,23 @@ def time_series(outfile='images/StationSeries.png'):
         # create string title and turn tau's into matplotlib date numbers
         station=gc['Station']
         dates = gc['Date']
-        sdates= np.array(os.dates)
+        hours= np.array([ d.hour for d in dates ])
+        h0inds=np.where(hours==0)[0] # use UTC+0 times to grab local morning estimates only
+        dates=date2num(dates[h0inds])
+        data=data[h0inds]
+        sdates= date2num(np.array(os.dates))
         
         # plot time series for each station
-        f3ax.plot_date(dates, data[:], '-b', label='GEOS-Chem')
-        f3ax.plot_date(sdates, sdata[:], 'k*', label='sondes')
+        print(station)
+        print(dates)
+        #f3ax.plot_date(dates, data, '-b', label='GEOS-Chem')
+        #f3ax.plot_date(sdates, sdata, 'k*', label='sondes')
+        f3ax.plot_date(dates, data, linestyle='None', marker='.', color=model_colour, label='GEOS-Chem')
+        f3ax.plot_date(sdates, sdata, linestyle='None', marker='*', color=data_colour, label='sondes')
         f3ax.set_title(station)
         if i == 0: 
             f3ax.legend()
-            f3ax.set_xlim([datetime(2003,9,1),datetime(2014,3,1)])
+            f3ax.set_xlim(date2num([datetime(2003,9,1),datetime(2014,3,1)]))
         
         # add dobson units
         newax=f3ax.twinx()
@@ -658,7 +669,7 @@ def degraded_profile_comparison(station=0,date=datetime(2007,1,1)):
     # some plot setup stuff
     xlim=[0,125]
     ylim=[0,14]
-    col={'GEOS':'black','Sonde':'maroon','SondeDeg':'fuchsia'} # colours for model vs sondes
+    col={'GEOS':model_colour,'Sonde':data_colour,'SondeDeg':'fuchsia'} # colours for model vs sondes
             
     # Set up plot axes
     f = plt.figure(figsize=(10,14))
@@ -953,8 +964,8 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #check_GC_output()
-    [event_profiles(s) for s in [0,1,2]]
-    #time_series()
+    #[event_profiles(s) for s in [0,1,2]]
+    time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
     #summary_plots()
     #monthly_profiles(hour=0,degradesondes=True)
