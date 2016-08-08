@@ -477,7 +477,7 @@ def monthly_profiles(hour=0, degradesondes=False):
         print("Image saved to %s"%outfile)
         plt.close(f)
     
-def event_profiles(station=2, data=None):
+def event_profiles(station=2, data=None, legend=False):
     '''
     Plot all the modelled profiles alongside sonde profiles for event dates
     inputs: station=2, data=None
@@ -498,14 +498,14 @@ def event_profiles(station=2, data=None):
     print("saving profiles for station %s"%stn_name)
     ## At each event date plot the profiles side by side.
     for date in eventdates:
-        outfile='images/eventprofiles/%s/%s_%s.ps'%(stn_name,stn_name, date.strftime("%Y%m%d"))
+        outfile='images/eventprofiles/%s/%s_%s.png'%(stn_name,stn_name, date.strftime("%Y%m%d"))
         
         # find matching model profile
         ymd = np.array([ d.strftime('%Y%m%d') for d in dates])
         ind=np.where( ymd=='%4d%02d%02d'%(date.year,date.month,date.day) )[0]
         
         if len(ind) == 0:
-            outfile='images/eventprofiles/%s/missing_%s_%s.ps'%(stn_name,stn_name, date.strftime("%Y%m%d"))
+            outfile='images/eventprofiles/%s/missing_%s_%s.png'%(stn_name,stn_name, date.strftime("%Y%m%d"))
             outf=open(outfile,'w')
             print('Missing %s'%date.strftime('%Y%m%d'))
             outf.close()
@@ -531,7 +531,8 @@ def event_profiles(station=2, data=None):
         Sind  = sondes.get_index(date)
         plt.plot(SO3s[Sind,:], SAlts[Sind,:], color=data_colour,
                  linewidth=3, label='Sonde Profile')
-        plt.legend()
+        if legend:
+            plt.legend()
         plt.savefig(outfile)
         print("plotted %s"%date.strftime('%Y%m%d'))
         plt.close(f)    
