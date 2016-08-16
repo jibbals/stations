@@ -106,9 +106,10 @@ class GChem:
             cb.set_label(label)
         return m,cb
     
-    def southernOceanTVC(self, north=-55,south=-85):
+    def southernOceanTVC(self, north=-35,south=-75):
         '''
         Get the Tropospheric Vertical Column averaged into months
+        By default averaged over 35S to 75S ( range includes our 3 data sites )
         Returns:
             molecules/cm2 [12 months] 
         '''

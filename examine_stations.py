@@ -146,9 +146,9 @@ def summary_plots():
         plt.close()
         
 
-def SO_extrapolation():
+def SO_extrapolation(north=-35,south=-75):
     '''
-    Rough estimate of Southern Oceanic STT flux
+    Rough estimate of extrapolation
     '''
     # Read sondes data
     sonde_files=[fio.read_sonde(s) for s in range(2)]
@@ -175,14 +175,22 @@ def SO_extrapolation():
     
     # model SO tropospheric O3 Column:
     GCData=fio.read_GC_global()
-    SOTropO3=GCData.southernOceanTVC()
-    X=range(12)
+    SOTropO3=GCData.southernOceanTVC(north=north,south=south)
     
     # plot estimated flux on left hand axis
     # plot likelihoods and flux pct on the right hand axis
     f=np.mean(fluxpct, axis=1)
     l=np.mean(likelihood, axis=1)
     flux = SOTropO3 * f * l
+    return f,l,flux, SOTropO3
+
+def plot_SO_extrapolation(north=-35,south=-75):
+    '''
+    plot estimate of Southern Oceanic STT flux
+    '''
+    X=range(12)
+    f,l,flux, SOTropO3=SO_extrapolation(north=north,south=south)
+    
     print("%4e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%np.sum(flux))
     
     plt.clf()
@@ -221,6 +229,33 @@ def SO_extrapolation():
     print("Created image at image/SO_extrapolation.png")
     plt.savefig('images/SO_extrapolation.png')
 
+def check_extrapolation():
+    '''
+    Calculate the extrapolation, and it's sensitivity to changes in range changes
+    '''
+    # model SO tropospheric O3 Column:
+    GCData=fio.read_GC_global()
+    
+    # extrapolation using our lat range of -50 to -75
+    print('calculating default extrapolation over -35 to -75:')
+    sotropo3=np.mean(GCData.southernOceanTVC(north=-35,south=-75))
+    
+    # extrapolation with southern lat of -70 and -80
+    sotropo3s1=np.mean(GCData.southernOceanTVC(north=-35,south=-70)) # South+5
+    sotropo3s2=np.mean(GCData.southernOceanTVC(north=-35,south=-80)) # South-5
+    
+    # extrapolation with northern lat of -55 and -45
+    sotropo3n1=np.mean(GCData.southernOceanTVC(north=-40,south=-75)) # North-5
+    sotropo3n2=np.mean(GCData.southernOceanTVC(north=-30,south=-75)) # North+5
+    
+    dl=[] # [ds1, ds2, dn1, dn2]
+    for d in [sotropo3s1,sotropo3s2,sotropo3n1,sotropo3n2]:
+        dl.append( 100 * (sotropo3 - d) / sotropo3 )
+    # differences
+    print('relative differences with changing lat bounds: ')
+    print('    %6s %6s '%('+5','-5') )
+    print(' N :%6.3f %6.3f '%(dl[3],dl[2]) )
+    print(' S :%6.3f %6.3f '%(dl[0],dl[1]) )
 
 def seasonal_profiles(hour=0, degradesondes=False):
     '''
@@ -971,10 +1006,12 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
+    check_extrapolation()
+    #plot_SO_extrapolation()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    seasonal_profiles(hour=0,degradesondes=False)
+    #seasonal_profiles(hour=0,degradesondes=False)
     #summary_plots()
     #monthly_profiles(hour=0,degradesondes=True)
     #anomaly_correlation()
@@ -982,6 +1019,6 @@ if __name__ == "__main__":
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()
-    #SO_extrapolation()
+    
     #[monthly_GC_profiles(hour=h) for h in [0,6,12,18] ]
     
