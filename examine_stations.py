@@ -257,7 +257,7 @@ def check_extrapolation():
     print(' N :%6.3f %6.3f '%(dl[3],dl[2]) )
     print(' S :%6.3f %6.3f '%(dl[0],dl[1]) )
 
-def seasonal_profiles(hour=0, degradesondes=False):
+def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
     '''
     Profile mean and std deviation for each month for each site
     If you only want to consider a particular hour then set the hour parameter
@@ -268,6 +268,8 @@ def seasonal_profiles(hour=0, degradesondes=False):
     # read site data
     sites = [ fio.read_GC_station(p) for p in range(3) ]
     o3sondes = [ fio.read_sonde(p) for p in range(3) ]
+    
+    # Model - Obs BIAS, TODO: record and print biases
     
     # some plot setups stuff
     months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
@@ -306,9 +308,15 @@ def seasonal_profiles(hour=0, degradesondes=False):
         # need to vertically bin the O3 profiles,
         # interpolated at 100 points up to 14km
         means=np.zeros([4,Znewlen])
+        medians=np.zeros([4,Znewlen])
+        pcta = np.zeros([4,Znewlen]) # ath percentile
+        pctb = np.zeros([4,Znewlen]) # bth percentile
         stds =np.zeros([4,Znewlen])
         TPm = np.zeros(4)
         s_means=np.zeros([4,Znewlen])
+        s_medians=np.zeros([4,Znewlen])
+        s_pcta = np.zeros([4,Znewlen]) # 5th percentile
+        s_pctb = np.zeros([4,Znewlen]) # 95th percentile
         s_stds =np.zeros([4,Znewlen])
         s_TPm = np.zeros(4)
         s_counts=np.zeros(4)
@@ -340,23 +348,29 @@ def seasonal_profiles(hour=0, degradesondes=False):
             for i in range(s_n):
                 s_profs[i,:] = np.interp(Znew, s_Z[s_inds[i],:], s_O3[s_inds[i],:],left=np.NaN,right=np.NaN)
             means[season,:]=np.nanmean(profs,axis=0)
+            medians[season,:]=np.nanmedian(profs,axis=0)
+            pcta[season,:] = np.nanpercentile(profs,pctl,axis=0)
+            pctb[season,:] = np.nanpercentile(profs,100-pctl,axis=0)
             stds[season,:] =np.nanstd(profs,axis=0)
             TPm[season] = np.nanmean(TP[inds])
             s_means[season,:]=np.nanmean(s_profs,axis=0)
+            s_medians[season,:]=np.nanmedian(s_profs,axis=0)
+            s_pcta[season,:] = np.nanpercentile(s_profs,pctl,axis=0)
+            s_pctb[season,:] = np.nanpercentile(s_profs,100-pctl,axis=0)
             s_stds[season,:] =np.nanstd(s_profs,axis=0)
             s_TPm[season] = np.nanmean(s_TP[s_inds])
             
         stn_name=site['Station'].split(' ')[0]
         
-        # plot the mean profiles and shade the area of 1 stdev
+        # plot the median profiles and shade the area of 5th-95th percentile
         for i in range(4):
             plt.sca(axes[i,j]) # set current axis
-            X=means[i,:]                
-            Xl=X-stds[i,:]
-            Xr=X+stds[i,:]
-            s_X=s_means[i,:]
-            s_Xl=s_X-s_stds[i,:]
-            s_Xr=s_X+s_stds[i,:]
+            X=medians[i,:]                
+            Xl=pcta[i,:]
+            Xr=pctb[i,:]
+            s_X=s_medians[i,:]
+            s_Xl=s_pcta[i,:]
+            s_Xr=s_pctb[i,:]
             
             ## plot averaged profiles + std from the model
             #
@@ -387,7 +401,7 @@ def seasonal_profiles(hour=0, degradesondes=False):
     
     ## set title, and layout, then save figure
     #
-    f.suptitle("Seasonally averaged profiles",fontsize=24)
+    f.suptitle("Seasonal profiles",fontsize=24)
     outfile='images/eventprofiles/seasonalprofiles.png'
     if hour is not None: outfile='images/eventprofiles/seasonalprofiles%02d.png'%hour
     if degradesondes:
@@ -445,9 +459,15 @@ def monthly_profiles(hour=0, degradesondes=False):
         # need to vertically bin the O3 profiles,
         # interpolated at 100 points up to 14km
         means=np.zeros([12,100])
+        medians=np.zeros([12,100])
+        pct5 = np.zeros([12,100]) # 5th percentile
+        pct95 = np.zeros([12,100]) # 95th percentile
         stds =np.zeros([12,100])
         TPm = np.zeros(12)
         s_means=np.zeros([12,100])
+        s_medians=np.zeros([12,100])
+        s_pct5 = np.zeros([12,100]) # 5th percentile
+        s_pct95 = np.zeros([12,100]) # 95th percentile
         s_stds =np.zeros([12,100])
         s_TPm = np.zeros(12)
         s_counts=np.zeros(12)
@@ -473,23 +493,29 @@ def monthly_profiles(hour=0, degradesondes=False):
             for i in range(s_n):
                 s_profs[i,:] = np.interp(Znew, s_Z[s_inds[i],:], s_O3[s_inds[i],:],left=np.NaN,right=np.NaN)
             means[month,:]=np.nanmean(profs,axis=0)
+            medians[month,:]=np.nanmedian(profs,axis=0)
             stds[month,:] =np.nanstd(profs,axis=0)
+            pct5[month,:] = np.nanpercentile(profs,5,axis=0)
+            pct95[month,:] = np.nanpercentile(profs,95,axis=0)
             TPm[month] = np.nanmean(TP[inds])
             s_means[month,:]=np.nanmean(s_profs,axis=0)
+            s_medians[month,:]=np.nanmedian(s_profs,axis=0)
             s_stds[month,:] =np.nanstd(s_profs,axis=0)
+            s_pct5[month,:] = np.nanpercentile(s_profs,5,axis=0)
+            s_pct95[month,:] = np.nanpercentile(s_profs,95,axis=0)
             s_TPm[month] = np.nanmean(s_TP[s_inds])
             
-        # plot the mean profiles and shade the area of 1 stdev
+        # plot the median profiles and shade the area of 5th-95th percentiles
         for i in range(4):
             for j in range(3):
                 plt.sca(axes[i,j]) # set current axis
                 mind=months[i,j]
-                X=means[mind,:]                
-                Xl=X-stds[mind,:]
-                Xr=X+stds[mind,:]
-                s_X=s_means[mind,:]
-                s_Xl=s_X-s_stds[mind,:]
-                s_Xr=s_X+s_stds[mind,:]
+                X=medians[mind,:]                
+                Xl=X-pct5[mind,:]
+                Xr=X+pct95[mind,:]
+                s_X=s_medians[mind,:]
+                s_Xl=s_X-s_pct5[mind,:]
+                s_Xr=s_X+s_pct95[mind,:]
                 
                 # plot averaged profiles + std
                 plt.plot(X, Znew , linewidth=3, color=col['GEOS'])
@@ -509,7 +535,7 @@ def monthly_profiles(hour=0, degradesondes=False):
         # set title, and layout, then save figure
         stn_name=site['Station'].split(' ')[0]
         if hour is not None: stn_name+='_H%02d'%hour
-        f.suptitle("Monthly Averaged Profiles over "+stn_name)
+        f.suptitle("Monthly Median Profiles over "+stn_name)
         outfile='images/eventprofiles/%s_monthprofiles.png'%stn_name
         if degradesondes:
             outfile='images/eventprofiles/%s_monthprofilesdegraded.png'%stn_name
@@ -1006,14 +1032,14 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
-    check_extrapolation()
+    #check_extrapolation()
     #plot_SO_extrapolation()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
-    #seasonal_profiles(hour=0,degradesondes=False)
+    seasonal_profiles(hour=0,degradesondes=False)
     #summary_plots()
-    #monthly_profiles(hour=0,degradesondes=True)
+    #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
