@@ -12,8 +12,8 @@ import matplotlib
 # Stop python from displaying images, faster to save images this way
 matplotlib.use('Agg')
 
-# font size global
-matplotlib.rcParams.update({'font.size': 15})
+# font size global, also legend markers should only have 1 points in them
+matplotlib.rcParams.update({'font.size': 15,'legend.numpoints':1,'legend.scatterpoints':1})
 
 # plotting, dates, maths
 import matplotlib.pyplot as plt
@@ -261,7 +261,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
     '''
     Profile mean and std deviation for each month for each site
     If you only want to consider a particular hour then set the hour parameter
-        hour can be one of [0, 6, 12, 18, None]
+        hour can be one of [0, 6, 12, 18]
     set degradesondes=True to degrade the sondes to matching GEOS-Chem resolution before finding the average..
     '''
     
@@ -273,13 +273,13 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
     
     # some plot setups stuff
     months=np.array([[11,0,1],[2,3,4],[5,6,7],[8,9,10]])
-    seasonstr=['Summer','Autumn','Winter','Spring']
+    seasonstr=['Summer (DJF)','Autumn (MAM)','Winter (JJA)','Spring (SON)']
     seasonalcolours=seasonal_cmap.colors
     
     # Set up plot axes
     f, axes = plt.subplots(4,3, sharex=True, sharey=True, figsize=(16,16))
-    axes[3,1].set_xlabel('Ozone (ppb)')
-    axes[3,0].set_ylabel('Altitude (km)')
+    axes[3,1].set_xlabel('Ozone (ppb)', fontsize=20)
+    axes[3,0].set_ylabel('Altitude (km)', fontsize=20)
     xlim=[0,125]
     axes[3,1].set_xlim(xlim)
     ylim=[0,14]
@@ -313,6 +313,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
         pctb = np.zeros([4,Znewlen]) # bth percentile
         stds =np.zeros([4,Znewlen])
         TPm = np.zeros(4)
+        counts = np.zeros(4)
         s_means=np.zeros([4,Znewlen])
         s_medians=np.zeros([4,Znewlen])
         s_pcta = np.zeros([4,Znewlen]) # 5th percentile
@@ -325,19 +326,19 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
         allmonths=np.array([ d.month for d in site['Date'] ])
         s_allmonths=np.array( [ d.month for d in sonde.dates ])
         for season in range(4):
-            # find indices matching the current month
-            inds=np.where((allmonths == months[season,0]+1) + 
+            # determine coincident indices for GEOS-Chem vs sondes at particular hour
+            sondeAtHour=np.array([ datetime(d.year,d.month,d.day,hour) for d in sonde.dates ])
+            hourmatch = np.in1d(site['Date'], sondeAtHour, assume_unique=True)
+            
+            # find coincident indices matching the current month
+            inds = np.where( ((allmonths == months[season,0]+1) + 
                 (allmonths == months[season,1]+1) +
-                (allmonths == months[season,2]+1) )[0]
-            if hour is not None:
-                allhours =np.array([ d.hour for d in site['Date'] ])
-                inds = np.where( ((allmonths == months[season,0]+1) + 
-                    (allmonths == months[season,1]+1) +
-                    (allmonths == months[season,2]+1))  * (allhours==hour) )[0]
+                (allmonths == months[season,2]+1))  * hourmatch )[0]
             s_inds=np.where((s_allmonths == months[season,0]+1) + 
                 (s_allmonths == months[season,1]+1) +
                 (s_allmonths == months[season,2]+1) )[0]
             n, s_n = len(inds), len(s_inds)
+            counts[season]=n
             s_counts[season]=s_n
             
             # each profile needs to be interpolated up to 14km
@@ -390,24 +391,25 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
             plt.plot(xlim, [Y, Y], '--', linewidth=2, color=col['GEOS'])
             plt.plot(xlim, [s_Y, s_Y], '--', linewidth=2, color=col['Sonde'])
             
-            # add count text to upper corner
-            plt.text(.72*xlim[1], .5, "%d sondes"%s_counts[i])
+            # add count text to lower right corner
+            plt.text(.65*xlim[1], 2, "%d simulated"%counts[i],color=col['GEOS'])
+            plt.text(.65*xlim[1], .5, "%d sondes"%s_counts[i])
             if i == 0:
-                plt.title(stn_name)
+                plt.title(stn_name, fontsize=26)
             if j == 2:
                 twinax=plt.twinx()
                 twinax.set_yticks([]) # turn off ticks
-                twinax.set_ylabel(seasonstr[i])
+                twinax.set_ylabel(seasonstr[i],fontsize=26)
     
     ## set title, and layout, then save figure
     #
-    f.suptitle("Seasonal profiles",fontsize=24)
+    f.suptitle("Seasonal profiles",fontsize=32)
     outfile='images/eventprofiles/seasonalprofiles.png'
     if hour is not None: outfile='images/eventprofiles/seasonalprofiles%02d.png'%hour
     if degradesondes:
         outfile='images/eventprofiles/seasonalprofilesdegraded.png'%stn_name
     plt.tight_layout()
-    plt.subplots_adjust(top=0.94)
+    plt.subplots_adjust(top=0.92)
     plt.savefig(outfile)
     print("Image saved to %s"%outfile)
     plt.close(f)
@@ -611,7 +613,7 @@ def time_series(outfile='images/StationSeries.png'):
     '''
     f3, f3axes = plt.subplots(3, 1, sharex=True, figsize=(14,10))
     f3axes[2].set_xlabel('Date')
-    f3axes[1].set_ylabel('Ozone molecules/cm2')
+    f3axes[1].set_ylabel('Ozone (molec/cm2)')
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
@@ -627,24 +629,32 @@ def time_series(outfile='images/StationSeries.png'):
         sdata=np.array(os.tropvc)
         
         # create string title and turn tau's into matplotlib date numbers
-        station=gc['Station']
-        dates = gc['Date']
-        hours= np.array([ d.hour for d in dates ])
-        h0inds=np.where(hours==0)[0] # use UTC+0 times to grab local morning estimates only
-        dates=date2num(dates[h0inds])
-        data=data[h0inds]
-        sdates= date2num(np.array(os.dates))
+        station =gc['Station']
+        dates   = gc['Date']
+        hours   = np.array([ d.hour for d in dates ])
+        h0inds  = np.where(hours==0)[0] # use UTC+0 times to grab local morning estimates only
+        dates   = date2num(dates[h0inds])
+        data    = data[h0inds]
+        sdates  = date2num(np.array(os.dates))
+        # also need to grab the model points which are on the same days as sondes
+        s0dates = date2num(np.array([ datetime(sdate.year,sdate.month,sdate.day,0) for sdate in os.dates ]))
+        matching= np.in1d(dates, s0dates, assume_unique=True)
+        mdates  = dates[matching]
+        mdata   = data[matching]
         
         # plot time series for each station
         print(station)
         print(dates)
         #f3ax.plot_date(dates, data, '-b', label='GEOS-Chem')
         #f3ax.plot_date(sdates, sdata, 'k*', label='sondes')
-        f3ax.plot_date(dates, data, linestyle='None', marker='.', color=model_colour, label='GEOS-Chem')
-        f3ax.plot_date(sdates, sdata, linestyle='None', marker='*', color=data_colour, label='sondes')
+        f3ax.plot_date(dates, data, linestyle='None', marker='.', color='grey') 
+        f3ax.plot_date(sdates, sdata, linestyle='None', marker='*',
+                       color=data_colour, label='Ozonesonde')
+        f3ax.plot_date(mdates, mdata, linestyle='None', marker='.',
+                       color=model_colour, label='GEOS-Chem')
         f3ax.set_title(station)
         if i == 0: 
-            f3ax.legend()
+            f3ax.legend(numpoints=1)
             f3ax.set_xlim(date2num([datetime(2003,9,1),datetime(2014,3,1)]))
         
         # add dobson units
@@ -1036,7 +1046,7 @@ if __name__ == "__main__":
     #plot_SO_extrapolation()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
-    #time_series()
+    time_series()
     seasonal_profiles(hour=0,degradesondes=False)
     #summary_plots()
     #monthly_profiles(hour=0,degradesondes=False)
