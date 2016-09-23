@@ -196,14 +196,15 @@ def plot_SO_extrapolation(north=-35,south=-75):
     plt.clf()
     fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
     plt.sca(axes[0])
-    plt.plot(X,flux, color='black', linewidth=3, label="Flux from STTs")
-    plt.title("Flux from STTs")
+    plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
+    plt.title("Ozone flux from STTs")
+    plt.ylabel('Ozone flux [molec/cm$^2$/yr]')
     plt.ylim([1e14, 6e15])
     
     ax=axes[1]
     plt.sca(ax)
-    l1=plt.plot(X, SOTropO3, 'k', linewidth=2, label="Trop O$_3$ VC")
-    plt.title("Tropospheric ozone VCs in SO (GEOS-Chem)")
+    l1=plt.plot(X, SOTropO3, 'k', linewidth=2, label="$\Omega_{SO_{O_3}}$")
+    #plt.title("Tropospheric ozone VCs in SO (GEOS-Chem)")
     plt.xlim([-0.5, 11.5])
     plt.xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
@@ -212,8 +213,8 @@ def plot_SO_extrapolation(north=-35,south=-75):
     # plot percentages
     newax=plt.twinx()
     # likelihood pct * pct contribution
-    l2=newax.plot(X,f*100, color='teal', label='STT fraction')
-    l3=newax.plot(X,l*100, color='magenta', label='STT likelihood')
+    l2=newax.plot(X,f*100*3, color='teal', label='f*3')
+    l3=newax.plot(X,l*100, color='magenta', label='l')
     
     # axes and legends
     #newax.legend(loc=1)
@@ -221,11 +222,11 @@ def plot_SO_extrapolation(north=-35,south=-75):
     newax.set_ylim([0,35])
     lns=l1+l2+l3
     plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
-    ax.set_ylabel('Flux (molecules/cm2)')
+    ax.set_ylabel('Ozone flux [molec/cm2]')
     plt.xlim([-0.5, 11.5])
     ax.set_xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.suptitle('Tropospheric ozone due to STT to over the Southern Ocean')
+    plt.suptitle('Tropospheric ozone due to STT to over the Southern Ocean',fontsize=26)
     print("Created image at image/SO_extrapolation.png")
     plt.savefig('images/SO_extrapolation.png')
 
@@ -1043,7 +1044,7 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #check_extrapolation()
-    #plot_SO_extrapolation()
+    plot_SO_extrapolation()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     time_series()
