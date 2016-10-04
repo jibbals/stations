@@ -78,6 +78,15 @@ class sondes:
         closest=sorted(self.dates, key=lambda d : abs (d-date))[0]
         di = self.dates.index(closest)
         return di
+    
+    def month_indices(self, month):
+        ''' Return indexes of data from a particular month '''
+        inds= [ i for i,d in enumerate(self.dates) if d.month==month ]
+        return inds
+        #for i,d in enumerate(self.dates):
+        #    if d.month == month:
+        #        inds.append(i)
+    
     def get_profile(self, date):
         # return (gph, o3ppbv, temp, rh, dates, tp, tplr, tpo3) profile
         if np.size(self.tp) < 2:

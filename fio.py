@@ -20,7 +20,7 @@ from glob import glob
 from tau_to_date import tau_to_date as ttd
 
 # data classes
-from GChem import GChem
+from GChem import GChem,GCArea
 from sondes import sondes
 
 ########################
@@ -90,6 +90,10 @@ def save_to_netcdf(outfilename, dimsdict, arraydict, unitsdict):
     
     fid.close()
     print("saved to "+outfilename)
+
+def get_GC_area():
+    ''' Read the monthly gridded AREA (m2) for GEOS-Chem. '''
+    return GCArea()
 
 def read_GC_station(station):
     '''

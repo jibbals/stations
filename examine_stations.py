@@ -17,9 +17,11 @@ matplotlib.rcParams.update({'font.size': 15,'legend.numpoints':1,'legend.scatter
 
 # plotting, dates, maths
 import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
 from matplotlib.dates import DateFormatter, date2num
 import numpy as np
 from datetime import datetime
+from scipy.constants import N_A # avegadro's number
 
 # Local module for reading sonde dataset
 import fio
@@ -47,7 +49,7 @@ def summary_plots():
     # set up plot limits, labels etc..
     # three seperate summary bar plots.
     titles=['Event '+s for s in ['seasonality','altitude','depth']]
-    pltnames=[ 'summary_'+s+'.png' for s in ['season','altitude','depth'] ]
+    pltnames=[ 'images/summary_'+s+'.png' for s in ['season','altitude','depth'] ]
     evcolours=['cyan','darkblue','darkcyan','red'] # colours based on event type or burning
     
     linewidth=0.0
@@ -144,11 +146,125 @@ def summary_plots():
         plt.savefig(pltnames[i])
         print("Saved: %s"%pltnames[i])
         plt.close()
-        
+
+def seasonal_tropopause(show_event_tropopauses=False):
+    ''' Plot seasonal tropopause heights for each station '''
+    #sonde data
+    sondes = [ fio.read_sonde(site=j) for j in range(3) ]
+    
+    # interpolate up to 20km - every 100 metres
+    f=plt.figure(figsize=(12,10))
+    plt.tick_params(axis='x', which='major', labelsize=18)
+    plt.tick_params(axis='y', which='major', labelsize=18)
+    X=np.arange(12)
+    Xstr=['J','F','M','A','M','J','J','A','S','O','N','D']
+    colours=['k','chocolate','magenta']
+    
+    tp_m=np.zeros([12,3])
+    tp_u=np.zeros([12,3])
+    tp_d=np.zeros([12,3])
+    tp_e=np.zeros([12,3])
+    for si,sonde in enumerate(sondes):
+        for month in range(12):
+            minds   = sonde.month_indices(month+1)
+            tps     = np.array(sonde.tp)[minds]
+            if show_event_tropopauses:
+                eminds  = np.array(list(set.intersection(set(minds),set(sonde.einds))))
+                # if no events in this month
+                if len(eminds)==0: 
+                    tp_e[month,si]=np.NaN
+                else:
+                    tp_e[month,si]  = np.nanmedian(np.array(sonde.tp)[eminds])
+            tp_m[month,si]      = np.nanmedian(tps)
+            tp_u[month,si]      = np.nanpercentile(tps, 90)
+            tp_d[month,si]      = np.nanpercentile(tps, 10)
+        # plot the median and shade the 80% percentile range
+        plt.plot(X,tp_m[:,si],color=colours[si],label=sonde.name,linewidth=3)
+        plt.fill_between(X, tp_d[:,si], tp_u[:,si], color=colours[si],alpha=0.4)
+        if show_event_tropopauses:
+            # dotted line on event tpheights
+            plt.plot(X, tp_e[:,si], '--',color=colours[si])
+    plt.xticks(X,Xstr)
+    plt.xlim([-0.5,11.5])
+    plt.ylim([4,17])
+    plt.ylabel('Altitude [km]',fontsize=20)
+    plt.xlabel('Month',fontsize=20)
+    plt.legend(fontsize=22,loc=0,frameon=False)
+    ax=plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+    pname='images/tpheights.png'
+    plt.suptitle('Multi-year tropopause altitude',fontsize=28)
+    plt.savefig(pname)
+    print("Saved "+pname)
+    plt.close(f)
+    
+def seasonal_tropozone(Obs=True):
+    ''' Seasonal tropospheric ozone contour plots '''
+    
+    #sonde data
+    sondes = [ fio.read_sonde(site=j) for j in range(3) ]
+    
+    # interpolate up to 20km - every 100 metres
+    levels=np.arange(.1,20.001,.1)
+    f=plt.figure(figsize=(15,15))
+    plt.tick_params(axis='x', which='major', labelsize=24)
+    plt.tick_params(axis='y', which='major', labelsize=18)
+    X=np.arange(12)
+    Xstr=['J','F','M','A','M','J','J','A','S','O','N','D']
+    for sind,sonde in enumerate(sondes):    
+        ppbv_m  = np.zeros([12,len(levels)])
+        tp_m    = np.zeros([12,2])
+        ppbvs   = sonde.o3ppbv
+        alts    = sonde.gph/1000.0 # m to km
+        tplr    = np.array(sonde.tplr) # in km
+        tpo3    = np.array(sonde.tpo3) # in km
+        Xstrcpy = []
+        for i in range(12):
+            month_inds=sonde.month_indices(i+1)
+            ppbv_month=np.zeros([len(month_inds),len(levels)])
+            for j,k in enumerate(month_inds):
+                ppbv_month[j,:]=np.interp(levels,alts[k,:],ppbvs[k,:],left=np.NaN,right=np.NaN)
+            ppbv_m[i,:] = np.nanmean(ppbv_month,axis=0)
+            Xstrcpy.append('%s$_{%d}$'%(Xstr[i],len(month_inds)))
+            tp_m[i,0] = np.nanmedian(tplr[month_inds])
+            tp_m[i,1] = np.nanmedian(tpo3[month_inds])
+        # plot each site
+        plt.subplot(311 + sind)
+        cf=plt.contourf(X,levels,ppbv_m.T,
+                        levels=np.logspace(1,2.5,50),
+                        cmap=plt.cm.jet,norm = LogNorm())
+        plt.plot(X,tp_m[:,0],color='red') # plot lapse rate tropopause 
+        plt.plot(X,tp_m[:,1],color='k') # plot ozone tropopause
+        plt.title(sonde.name,fontsize=24)
+        # plot axes lables
+        plt.xlim([-0.5, 11.5])
+        plt.xticks(X,[Xstr,Xstrcpy][Obs])
+        plt.ylim([0,17])
+        if sind==1:
+            plt.ylabel('GPH [km]')
+    
+    plt.xlabel('Month$_{count}$',fontsize=24)
+    # set colour bar to the right
+    f.subplots_adjust(right=0.8)
+    cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
+    cbar=f.colorbar(cf, cax=cbar_ax)
+    cbar.set_label(label="Ozone [ppbv]",size=20)
+    cbar_ticks=np.logspace(1,2.5,6)
+    cbar_ticklabels=['%5.1f'%tick for tick in cbar_ticks]
+    cbar.set_ticks(cbar_ticks)
+    cbar.set_ticklabels(cbar_ticklabels)
+    plt.suptitle("Multi-year average tropospheric ozone",fontsize=28)
+    pname='images/seasonaltropozone.png'
+    plt.savefig(pname)
+    print('Saved '+pname)
+    plt.close(f)
 
 def SO_extrapolation(north=-35,south=-75):
     '''
-    Rough estimate of extrapolation
+    Rough estimate of flux over southern ocean
     '''
     # Read sondes data
     sonde_files=[fio.read_sonde(s) for s in range(2)]
@@ -191,15 +307,33 @@ def plot_SO_extrapolation(north=-35,south=-75):
     X=range(12)
     f,l,flux, SOTropO3=SO_extrapolation(north=north,south=south)
     
-    print("%4e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%np.sum(flux))
+    # conversion to Tg/yr:
+    gca=fio.get_GC_area()
+    so_area=gca.band_area(south,north) # m2
+    g_per_mol=48 # g/Mol
+    molecs=np.sum(flux) # molec/cm2/yr
+    # [molec/cm2/time] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
+    Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # Tg/time
     
+    # print both values    
+    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
+    print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
+    
+    # set ylimits for plot
+    ylim0, ylim1=0.95*np.min(flux), 1.05*np.max(flux)
+    ylim0tg, ylim1tg = 0.95*np.min(Tg_per_month), 1.05*np.max(Tg_per_month)
+    
+    # Plot the flux and the factors which are used to calculate it
     plt.clf()
     fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
     plt.sca(axes[0])
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     plt.title("Ozone flux from STTs")
-    plt.ylabel('Ozone flux [molec/cm$^2$/yr]')
-    plt.ylim([1e14, 6e15])
+    plt.ylabel('Ozone flux [molec/cm$^2$]')
+    plt.ylim([ylim0, ylim1])
+    rax=plt.twinx()
+    rax.set_ylim([ylim0tg,ylim1tg])
+    rax.set_ylabel('[Tg]')
     
     ax=axes[1]
     plt.sca(ax)
@@ -208,7 +342,7 @@ def plot_SO_extrapolation(north=-35,south=-75):
     plt.xlim([-0.5, 11.5])
     plt.xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.ylabel('Molecules / cm$^3$')
+    plt.ylabel('Ozone [molec/cm2]')
     
     # plot percentages
     newax=plt.twinx()
@@ -222,13 +356,12 @@ def plot_SO_extrapolation(north=-35,south=-75):
     newax.set_ylim([0,35])
     lns=l1+l2+l3
     plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
-    ax.set_ylabel('Ozone flux [molec/cm2]')
-    plt.xlim([-0.5, 11.5])
-    ax.set_xlabel('Month')
-    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
     plt.suptitle('Tropospheric ozone due to STT to over the Southern Ocean',fontsize=26)
-    print("Created image at image/SO_extrapolation.png")
-    plt.savefig('images/SO_extrapolation.png')
+    
+    # save image
+    pltname='images/SO_extrapolation.png'
+    plt.savefig(pltname)
+    print("Created image at "+pltname)    
 
 def check_extrapolation():
     '''
@@ -314,6 +447,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
         pctb = np.zeros([4,Znewlen]) # bth percentile
         stds =np.zeros([4,Znewlen])
         TPm = np.zeros(4)
+        TPstd = np.zeros(4)
         counts = np.zeros(4)
         s_means=np.zeros([4,Znewlen])
         s_medians=np.zeros([4,Znewlen])
@@ -321,6 +455,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
         s_pctb = np.zeros([4,Znewlen]) # 95th percentile
         s_stds =np.zeros([4,Znewlen])
         s_TPm = np.zeros(4)
+        s_TPstd = np.zeros(4)
         s_counts=np.zeros(4)
         
         # bin data into 4 seasons
@@ -355,12 +490,14 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
             pctb[season,:] = np.nanpercentile(profs,100-pctl,axis=0)
             stds[season,:] =np.nanstd(profs,axis=0)
             TPm[season] = np.nanmean(TP[inds])
+            TPstd[season] = np.nanstd(TP[inds])
             s_means[season,:]=np.nanmean(s_profs,axis=0)
             s_medians[season,:]=np.nanmedian(s_profs,axis=0)
             s_pcta[season,:] = np.nanpercentile(s_profs,pctl,axis=0)
             s_pctb[season,:] = np.nanpercentile(s_profs,100-pctl,axis=0)
             s_stds[season,:] =np.nanstd(s_profs,axis=0)
             s_TPm[season] = np.nanmean(s_TP[s_inds])
+            s_TPstd[season] = np.nanstd(s_TP[s_inds])
             
         stn_name=site['Station'].split(' ')[0]
         
@@ -397,10 +534,17 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
             plt.text(.65*xlim[1], .5, "%d sondes"%s_counts[i])
             if i == 0:
                 plt.title(stn_name, fontsize=26)
+                print("Tropopause heights:")
+                print("Station(season), GEOS-Chem(std), Sonde(std)")
             if j == 2:
                 twinax=plt.twinx()
                 twinax.set_yticks([]) # turn off ticks
                 twinax.set_ylabel(seasonstr[i],fontsize=26)
+            
+            # Print mean bias between model and obs tropopause heights.
+            # 
+            print ("%s(%s), TP:%6.3f(%6.3f), s_TP:%6.3f(%6.3f)"%(stn_name,seasonstr[i], TPm[i],TPstd[i],s_TPm[i],s_TPstd[i]))
+        
     
     ## set title, and layout, then save figure
     #
@@ -1044,11 +1188,13 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #check_extrapolation()
-    plot_SO_extrapolation()
+    #plot_SO_extrapolation()
+    seasonal_tropopause() # plot tpheights.png
+    #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
-    time_series()
-    seasonal_profiles(hour=0,degradesondes=False)
+    #time_series()
+    #seasonal_profiles(hour=0,degradesondes=False)
     #summary_plots()
     #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
