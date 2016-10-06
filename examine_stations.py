@@ -306,19 +306,24 @@ def plot_SO_extrapolation(north=-35,south=-75):
     '''
     X=range(12)
     f,l,flux, SOTropO3=SO_extrapolation(north=north,south=south)
-    
+    terao08flux=(flux/f)*0.35
     # conversion to Tg/yr:
     gca=fio.get_GC_area()
     so_area=gca.band_area(south,north) # m2
     g_per_mol=48 # g/Mol
     molecs=np.sum(flux) # molec/cm2/yr
+    terao08molecs=np.sum(terao08flux)
     # [molec/cm2/time] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
     Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # Tg/time
-    
+    terao08tgpm=terao08flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 #
     # print both values    
     print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
     print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
     
+    # check_Terao08_impact:
+    print("If we assume the proportion of ozone due to an event is actually 35\%, as in Terao08 for the northern hemisphere:")
+    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%terao08molecs)
+    print("(%5.3e Tg/yr)"%np.sum(terao08tgpm))
     # set ylimits for plot
     ylim0, ylim1=0.95*np.min(flux), 1.05*np.max(flux)
     ylim0tg, ylim1tg = 0.95*np.min(Tg_per_month), 1.05*np.max(Tg_per_month)
@@ -1188,8 +1193,8 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #check_extrapolation()
-    #plot_SO_extrapolation()
-    seasonal_tropopause() # plot tpheights.png
+    plot_SO_extrapolation()
+    #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
