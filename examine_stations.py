@@ -38,6 +38,18 @@ col={'GEOS':model_colour,'Sonde':data_colour}
 ###########################################################################
 #####################    Functions                         ################
 ###########################################################################
+def brief_summary():
+    ''' Print a brief summary '''
+    
+    sondes=[fio.read_sonde(s) for s in range(3)]
+    # print a brief summary of sondes
+    for s in sondes:
+        print(s.name)
+        print("%d releases, %d events, "%(len(s.dates),len(s.edates)))
+        print('%d fire flagged'%np.sum(s.fireflagged))
+        print("misc, front, cutoff")
+        arr=np.array(s.etype)
+        print("%4d,%5d,%4d"%(np.sum(arr == 0),np.sum(arr==1),np.sum(arr==2)))
 
 def summary_plots():
     '''
@@ -69,24 +81,34 @@ def summary_plots():
         
         # loop over the three types we want to plot.
         ph=[] # plot handles
+        obs=np.zeros(12)
+        for m in range(12):
+            obs[m]=np.sum([ s.month == m+1 for s in sonde.dates ])
         prev=np.zeros(12)
+        rprev=np.zeros(12)
         for k in krange:
             inds=list(set(np.where(etypes == k)[0]) - set(fireinds))
             mons=[edates[i].month-1 for i in inds]
             histo=np.histogram(mons,bins)[0]
-            ph.append(plt.bar(left, histo, width, color=evcolours[k],bottom=prev,linewidth=linewidth))
+            # relative monthly occurrence
+            rhisto=histo/obs*100.0
+            #ph.append(plt.bar(left, histo, width, color=evcolours[k],bottom=prev,linewidth=linewidth))
+            ph.append(plt.bar(left, rhisto, width, color=evcolours[k],bottom=rprev,linewidth=linewidth))
             prev=histo+prev
+            rprev=rhisto+rprev
         # add fires 
         firem=[edates[i].month-1 for i in fireinds]
         histo=np.histogram(firem,bins)[0]
-        ph.append(plt.bar(left,histo,width,color=evcolours[3],bottom=prev,linewidth=linewidth))
+        rhisto=histo/obs*100.0
+        #ph.append(plt.bar(left,histo,width,color=evcolours[3],bottom=prev,linewidth=linewidth))
+        ph.append(plt.bar(left,rhisto,width,color=evcolours[3],bottom=rprev,linewidth=linewidth))
         
         plt.xlim([-0.5, 11.5])
         if xlab: plt.xlabel('month')
         plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
         if legend:
             plt.legend( [ p[0] for p in ph ], label, loc='upper center')
-        if ylab: plt.ylabel('occurences')
+        if ylab: plt.ylabel('Event frequency [%]')
     
     def plot_altitude(sonde,depth=False,xlab=False,ylab=False,legend=False):
         xlims=[4,14]
@@ -94,7 +116,7 @@ def summary_plots():
         left=bins[0:20]
         width=0.5
         prev=np.zeros(20)
-        
+        obs=len(sonde.edates) # for relative occurrence
         epeaks=sonde.epeak
         if depth:
             xlims=[0,9]
@@ -126,7 +148,7 @@ def summary_plots():
         if xlab: plt.xlabel('Altitude (km)')
         if legend:
             plt.legend( [ p[0] for p in ph ], label, loc='upper right')
-        if ylab: plt.ylabel('occurences')
+        if ylab: plt.ylabel('Event altitude frequency')
     
     def plot_depth(sonde,xlab=False,ylab=False,legend=False):
         plot_altitude(sonde,depth=True,xlab=xlab,ylab=ylab,legend=legend)
@@ -1038,6 +1060,7 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
         plt.text(txtx,txty2,"r=%5.3f"%r_value)
         plt.text(txtx,txty3,"slope=%5.3f"%slope)
         if i==1: plt.legend()
+        print("%s: r^2=%5.3f, p=%5.3f"%(station,r_value**2, p_value))
     # set plot titles
     f3.suptitle('Relative anomaly from monthly mean',fontsize=21)
     
@@ -1072,8 +1095,8 @@ def correlation(outfile='images/correlations.png'):
     o3sondes = [fio.read_sonde(s) for s in range(3) ]
     
     f3, f3axes = plt.subplots(3, 1, figsize=(12,16))
-    f3axes[2].set_xlabel('Sonde tropospheric O3 (molecules/cm2)')
-    f3axes[1].set_ylabel('GEOS-Chem tropospheric O3 (molecules/cm2)')
+    f3axes[2].set_xlabel('Sonde $\Omega_{O_3}$ [$molec cm^{-2}$]',fontsize=20)
+    f3axes[1].set_ylabel('GEOS-Chem $\Omega_{O_3}$ [$molec cm^{-2}$]',fontsize=20)
     xlims=[[1e17,1e18], [1e17,1e18], [1e17,1.5e18]]
     ylims=[[1e17,1.5e18], [1e17,1.5e18], [1e17, 2e18]]
     ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
@@ -1124,7 +1147,7 @@ def correlation(outfile='images/correlations.png'):
         f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
         f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
         f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
-        f3ax.set_title(station)
+        f3ax.set_title(station,fontsize=22)
         f3ax.set_ylim(ylim)
         f3ax.set_xlim(xlim)
         txty=ylim[0]+0.1*(ylim[1]-ylim[0])
@@ -1135,8 +1158,9 @@ def correlation(outfile='images/correlations.png'):
         plt.text(txtx,txty2,"r=%5.3f"%r_value)
         plt.text(txtx,txty3,"slope=%5.3f"%slope)
         if i==1: plt.legend()
+        print("%s: r^2=%5.3f, p=%5.3f"%(station,r_value**2, p_value))
     # set plot titles
-    f3.suptitle('Correlation',fontsize=21)
+    f3.suptitle('Correlation',fontsize=26)
     
     # add colourbar space to the right
     f3.subplots_adjust(right=0.85)
@@ -1192,15 +1216,16 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
+    #brief_summary()
+    summary_plots()
     #check_extrapolation()
-    plot_SO_extrapolation()
+    #plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s) for s in [0,1,2]]
     #time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
-    #summary_plots()
     #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
