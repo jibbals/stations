@@ -116,7 +116,6 @@ def summary_plots():
         left=bins[0:20]
         width=0.5
         prev=np.zeros(20)
-        obs=len(sonde.edates) # for relative occurrence
         epeaks=sonde.epeak
         if depth:
             xlims=[0,9]
@@ -168,6 +167,35 @@ def summary_plots():
         plt.savefig(pltnames[i])
         print("Saved: %s"%pltnames[i])
         plt.close()
+
+def plot_andrew_STT():
+    # read data
+    snames, stts=fio.read_ANDREW()
+    
+    linewidth=0.0
+    
+    X = np.arange(12)    # the x locations for the barchart
+    left=X-0.5 # left side for barplot bins
+    width=0.9 # bar widths can be array
+    
+    plt.figure(figsize=[14,11])
+    # loop over the three types we want to plot.
+    for i in range(4):
+        plt.subplot(411+i)
+        plt.bar(left, stts[i,:], width, color='blue',linewidth=linewidth)
+        if i==1: plt.ylabel('Event frequency [%]')
+        plt.xlim([-0.5, 11.5])
+        plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'],fontsize=18)
+        plt.ylim([0, 18.0])
+        plt.yticks(np.arange(0,18.1,3))
+        plt.title(snames[i],fontsize=24)
+    plt.xlabel('month',fontsize=20)
+    plt.suptitle('STT Proxy using $Brunt-Vi\\"{a}s\\"{a}l\\"{a}$ frequency',fontsize=28)
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.90)
+    pltname='images/AndrewProxySTT.png'
+    plt.savefig(pltname)
+    print('saved '+pltname)
 
 def seasonal_tropopause(show_event_tropopauses=False):
     ''' Plot seasonal tropopause heights for each station '''
@@ -740,6 +768,7 @@ def event_profiles(station=2, data=None, legend=False):
     print("saving profiles for station %s"%stn_name)
     ## At each event date plot the profiles side by side.
     for date in eventdates:
+        title=stn_name + date.strftime(" %Y %m %d")
         outfile='images/eventprofiles/%s/%s_%s.png'%(stn_name,stn_name, date.strftime("%Y%m%d"))
         
         # find matching model profile
@@ -753,7 +782,7 @@ def event_profiles(station=2, data=None, legend=False):
             outf.close()
             continue
         
-        # pick out midday hour TODO:
+        # Using first hour index, since this is 7AM, 11AM, 11AM for our sites
         #
         ind=ind[0]
         
@@ -763,18 +792,21 @@ def event_profiles(station=2, data=None, legend=False):
         # plot the modelled event
         f=plt.figure(1,figsize=(6,10))
         plt.plot(O3,Altitude,color=model_colour, 
-                 linewidth=3, label='Modelled Profile')
+                 linewidth=3, label='GEOS-Chem')
+        # plot the model pressure levels
+        plt.plot(O3,Altitude,'_',color=model_colour, markersize=12)
         plt.ylabel('Altitude(km)')
         plt.xlabel('O3 (ppbv)')
         plt.xlim([5,120])
         plt.ylim([0,14])
+        plt.title(title, fontsize=24)
         
         ## event profile on same plot
         Sind  = sondes.get_index(date)
         plt.plot(SO3s[Sind,:], SAlts[Sind,:], color=data_colour,
-                 linewidth=3, label='Sonde Profile')
+                 linewidth=3, label='Sonde')
         if legend:
-            plt.legend()
+            plt.legend(loc='upper left',frameon=False)
         plt.savefig(outfile)
         print("plotted %s"%date.strftime('%Y%m%d'))
         plt.close(f)    
@@ -1217,13 +1249,14 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #brief_summary()
-    summary_plots()
+    #summary_plots()
+    plot_andrew_STT()
     #check_extrapolation()
     #plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
-    #[event_profiles(s) for s in [0,1,2]]
+    #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
     #time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)

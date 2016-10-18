@@ -306,3 +306,16 @@ def read_sonde(site=0):
     snd._set_density()
     snd._set_events()
     return(snd)
+
+def read_ANDREW():
+    stts=np.zeros([4,12]) # 4 sites, 12 months
+    sdic={'Davis':0,'Macquarie Island':1,'Melbourne':2,'Laverton':3}
+    snames=['Davis','Macquarie Island','Melbourne','Laverton']
+    with open('data/AndrewOzonesondeSTEProxy.csv') as fin:
+        reader=csv.reader(fin)
+        for line in reader:
+            site,month,stt=line[0],int(line[1])-1,float(line[2])
+            sind=sdic[site]
+            stts[sind,month]=float(stt)
+    return (snames, stts)
+            
