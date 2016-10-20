@@ -25,6 +25,7 @@ from scipy.constants import N_A # avegadro's number
 
 # Local module for reading sonde dataset
 import fio
+from JesseRegression import RMA
 
 # GLOBALS:
 #
@@ -1015,7 +1016,6 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
     '''
     plot correlation of monthly average anomalies between sondes and GC where both occur on the same day.
     '''
-    from scipy import stats
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
@@ -1076,10 +1076,10 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
         
         Yos,Ygc = np.array(Yos),np.array(Ygc)
         # plot correlation coefficient
-        slope,intercept,r_value,p_value,std_err= stats.linregress(Yos,Ygc)
+        m,b0,r,ci1,ci2= RMA(Yos,Ygc)
         colors=cmap(season)
         f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
-        f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
+        f3ax.plot(Yos, b0+m*Yos, 'k-', label='Regression')
         f3ax.plot([-1,1], [-1, 1], 'k--', label='1-1 line')
         f3ax.set_title(station)
         f3ax.set_ylim(ylim)
@@ -1089,10 +1089,10 @@ def anomaly_correlation(outfile='images/correlations_anomalies.png'):
         txty2=ylim[0]+0.17*(ylim[1]-ylim[0])
         txty3=ylim[0]+.24*(ylim[1]-ylim[0])
         plt.text(txtx,txty,"N=%d"%len(Yos))
-        plt.text(txtx,txty2,"r=%5.3f"%r_value)
-        plt.text(txtx,txty3,"slope=%5.3f"%slope)
+        plt.text(txtx,txty2,"r=%5.3f"%r)
+        plt.text(txtx,txty3,"slope=%5.3f"%m)
         if i==1: plt.legend()
-        print("%s: r^2=%5.3f, p=%5.3f"%(station,r_value**2, p_value))
+        print("%s: r^2=%5.3f"%(station,r**2))
     # set plot titles
     f3.suptitle('Relative anomaly from monthly mean',fontsize=21)
     
@@ -1120,15 +1120,14 @@ def correlation(outfile='images/correlations.png'):
     '''
     plot correlation between sondes and GC where both occur on the same day.
     '''
-    from scipy import stats
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
     o3sondes = [fio.read_sonde(s) for s in range(3) ]
     
     f3, f3axes = plt.subplots(3, 1, figsize=(12,16))
-    f3axes[2].set_xlabel('Sonde $\Omega_{O_3}$ [$molec cm^{-2}$]',fontsize=20)
-    f3axes[1].set_ylabel('GEOS-Chem $\Omega_{O_3}$ [$molec cm^{-2}$]',fontsize=20)
+    f3axes[2].set_xlabel('Sonde $\Omega_{O_3}$ [$molec/cm^2$]',fontsize=20)
+    f3axes[1].set_ylabel('GEOS-Chem $\Omega_{O_3}$ [$molec/cm^2$]',fontsize=20)
     xlims=[[1e17,1e18], [1e17,1e18], [1e17,1.5e18]]
     ylims=[[1e17,1.5e18], [1e17,1.5e18], [1e17, 2e18]]
     ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
@@ -1173,11 +1172,11 @@ def correlation(outfile='images/correlations.png'):
         
         Yos,Ygc = np.array(Yos),np.array(Ygc)
         # plot correlation coefficient
-        slope,intercept,r_value,p_value,std_err= stats.linregress(Yos,Ygc)
+        m,b0,r,ci1,ci2= RMA(Yos,Ygc)
         
         colors=cmap(season)
         f3ax.scatter(Yos, Ygc, color=colors, cmap=cmap, label='Trop O3')
-        f3ax.plot(Yos, intercept+slope*Yos, 'k-', label='Regression')
+        f3ax.plot(Yos, b0+m*Yos, 'k-', label='Regression')
         f3ax.plot(xlim, xlim, 'k--', label='1-1 line')
         f3ax.set_title(station,fontsize=22)
         f3ax.set_ylim(ylim)
@@ -1187,10 +1186,10 @@ def correlation(outfile='images/correlations.png'):
         txty2=ylim[0]+0.17*(ylim[1]-ylim[0])
         txty3=ylim[0]+.24*(ylim[1]-ylim[0])
         plt.text(txtx,txty,"N=%d"%len(Yos))
-        plt.text(txtx,txty2,"r=%5.3f"%r_value)
-        plt.text(txtx,txty3,"slope=%5.3f"%slope)
+        plt.text(txtx,txty2,"r=%5.3f"%r)
+        plt.text(txtx,txty3,"slope=%5.3f"%m)
         if i==1: plt.legend()
-        print("%s: r^2=%5.3f, p=%5.3f"%(station,r_value**2, p_value))
+        print("%s: r^2=%5.3f"%(station,r**2))
     # set plot titles
     f3.suptitle('Correlation',fontsize=26)
     
@@ -1250,7 +1249,7 @@ if __name__ == "__main__":
     print ("Running")
     #brief_summary()
     #summary_plots()
-    plot_andrew_STT()
+    #plot_andrew_STT()
     #check_extrapolation()
     #plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
@@ -1260,8 +1259,8 @@ if __name__ == "__main__":
     #time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)
-    #anomaly_correlation()
-    #correlation()
+    anomaly_correlation()
+    correlation()
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()
