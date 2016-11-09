@@ -346,18 +346,18 @@ def SO_extrapolation(north=-35,south=-75):
     
     # plot estimated flux on left hand axis
     # plot likelihoods and flux pct on the right hand axis
-    f=np.mean(fluxpct, axis=1)
-    l=np.mean(likelihood, axis=1)
-    flux = SOTropO3 * f * l
-    return f,l,flux, SOTropO3
+    I=np.mean(fluxpct, axis=1) # impact
+    f=np.mean(likelihood, axis=1) # frequency
+    flux = SOTropO3 * I * f
+    return I, f, flux, SOTropO3
 
 def plot_SO_extrapolation(north=-35,south=-75):
     '''
     plot estimate of Southern Oceanic STT flux
     '''
     X=range(12)
-    f,l,flux, SOTropO3=SO_extrapolation(north=north,south=south)
-    terao08flux=(flux/f)*0.35
+    I,f,flux, SOTropO3=SO_extrapolation(north=north,south=south)
+    terao08flux=(flux/I)*0.35
     # conversion to Tg/yr:
     gca=fio.get_GC_area()
     so_area=gca.band_area(south,north) # m2
@@ -382,7 +382,7 @@ def plot_SO_extrapolation(north=-35,south=-75):
     # Plot the flux and the factors which are used to calculate it
     plt.clf()
     fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
-    plt.sca(axes[0])
+    plt.sca(axes[1])
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     plt.title("Ozone flux from STTs")
     plt.ylabel('Ozone flux [molec/cm$^2$]')
@@ -390,21 +390,23 @@ def plot_SO_extrapolation(north=-35,south=-75):
     rax=plt.twinx()
     rax.set_ylim([ylim0tg,ylim1tg])
     rax.set_ylabel('[Tg]')
+    # chuck formula onto plot
+    plt.text(0.6,0.8,r'$J_{O_3} = \Omega_{SO_{O_3}} * f * I$', fontsize=28, transform = rax.transAxes)
     
-    ax=axes[1]
+    ax=axes[0]
     plt.sca(ax)
     l1=plt.plot(X, SOTropO3, 'k', linewidth=2, label="$\Omega_{SO_{O_3}}$")
     #plt.title("Tropospheric ozone VCs in SO (GEOS-Chem)")
     plt.xlim([-0.5, 11.5])
     plt.xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.ylabel('Ozone [molec/cm2]')
+    plt.ylabel('Ozone [molec/cm$^2$]')
     
     # plot percentages
     newax=plt.twinx()
     # likelihood pct * pct contribution
-    l2=newax.plot(X,f*100*3, color='teal', label='f*3')
-    l3=newax.plot(X,l*100, color='magenta', label='l')
+    l2=newax.plot(X,I*100*3, color='teal', label='I*3')
+    l3=newax.plot(X,f*100, color='magenta', label='f')
     
     # axes and legends
     #newax.legend(loc=1)
@@ -412,7 +414,7 @@ def plot_SO_extrapolation(north=-35,south=-75):
     newax.set_ylim([0,35])
     lns=l1+l2+l3
     plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
-    plt.suptitle('Tropospheric ozone due to STT to over the Southern Ocean',fontsize=26)
+    plt.suptitle('Tropospheric ozone due to STT over the Southern Ocean',fontsize=26)
     
     # save image
     pltname='images/SO_extrapolation.png'
@@ -1251,7 +1253,7 @@ if __name__ == "__main__":
     #summary_plots()
     #plot_andrew_STT()
     #check_extrapolation()
-    #plot_SO_extrapolation()
+    plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
@@ -1259,8 +1261,8 @@ if __name__ == "__main__":
     #time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)
-    anomaly_correlation()
-    correlation()
+    #anomaly_correlation()
+    #correlation()
     #yearly_cycle()
     #monthly_GC_profiles()
     #monthly_sonde_profiles()

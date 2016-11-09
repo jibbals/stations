@@ -150,15 +150,19 @@ class GCArea:
         fname="/home/jesse/Desktop/Repos/stations/data/GC/GC_area.nc"
         from netCDF4 import Dataset as dset 
         ncd=dset(fname,mode='r')
-        self.lats=ncd['latitude'][...]
-        self.lons=ncd['longitude'][...]
+        self.lats=ncd['latitude'][...] # [91]
+        self.lons=ncd['longitude'][...] # [144]
         self.latedges=ncd['latedges'][...]
         self.lonedges=ncd['lonedges'][...]
-        self.area=ncd['area'][...] # square metres
-    
+        self.area=ncd['area'][...] # square metres [144, 91]
+        
     def band_area(self,lat0,lat1):
         inds= (self.lats >= lat0) * (self.lats <= lat1)
-        return np.sum(self.area[inds,:])
+        #        print ('BUGGGGG')
+        #        print (np.sum(self.area[inds,:])) # 7.1e13
+        #        print (np.sum(self.area[:,inds])) # 1e14
+        #        print ('Changed?')
+        return np.sum(self.area[:,inds])
     
     #def gridbox_area(self, lat, lon):
     
