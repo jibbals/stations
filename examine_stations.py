@@ -47,11 +47,18 @@ def brief_summary():
     for s in sondes:
         print(s.name)
         print("%d releases, %d events, "%(len(s.dates),len(s.edates)))
-        print('%d fire flagged'%np.sum(s.fireflagged))
-        print("misc, front, cutoff")
+        print("first date: %s, end date: %s"%(s.dates[0],s.dates[-1]))
+        print("misc, front, cutoff, fire")
         arr=np.array(s.etype)
-        print("%4d,%5d,%4d"%(np.sum(arr == 0),np.sum(arr==1),np.sum(arr==2)))
-
+        fires=np.array(s.fireflagged)
+        arr[fires]=-1
+        print("%4d,%5d,%4d,%4d"%(np.sum(arr == 0),np.sum(arr==1),np.sum(arr==2),np.sum(arr==-1)))
+        
+        month_inds=[]
+        print("Monthly sonde releases")
+        for i in range(12):
+            month_inds.append(str(len(s.month_indices(i+1))))
+        print ','.join(month_inds)
 def summary_plots():
     '''
     Summary of seasonality, STT altitude, STT depth for each site.
@@ -252,7 +259,7 @@ def seasonal_tropopause(show_event_tropopauses=False):
     print("Saved "+pname)
     plt.close(f)
     
-def seasonal_tropozone(Obs=True):
+def seasonal_tropozone():
     ''' Seasonal tropospheric ozone contour plots '''
     
     #sonde data
@@ -272,14 +279,14 @@ def seasonal_tropozone(Obs=True):
         alts    = sonde.gph/1000.0 # m to km
         tplr    = np.array(sonde.tplr) # in km
         tpo3    = np.array(sonde.tpo3) # in km
-        Xstrcpy = []
+        
         for i in range(12):
             month_inds=sonde.month_indices(i+1)
             ppbv_month=np.zeros([len(month_inds),len(levels)])
             for j,k in enumerate(month_inds):
                 ppbv_month[j,:]=np.interp(levels,alts[k,:],ppbvs[k,:],left=np.NaN,right=np.NaN)
             ppbv_m[i,:] = np.nanmean(ppbv_month,axis=0)
-            Xstrcpy.append('%s$_{%d}$'%(Xstr[i],len(month_inds)))
+            
             tp_m[i,0] = np.nanmedian(tplr[month_inds])
             tp_m[i,1] = np.nanmedian(tpo3[month_inds])
         # plot each site
@@ -292,12 +299,12 @@ def seasonal_tropozone(Obs=True):
         plt.title(sonde.name,fontsize=24)
         # plot axes lables
         plt.xlim([-0.5, 11.5])
-        plt.xticks(X,[Xstr,Xstrcpy][Obs])
+        plt.xticks(X, Xstr)
         plt.ylim([0,17])
         if sind==1:
             plt.ylabel('GPH [km]')
     
-    plt.xlabel('Month$_{count}$',fontsize=24)
+    plt.xlabel('Month',fontsize=24)
     # set colour bar to the right
     f.subplots_adjust(right=0.8)
     cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
@@ -307,7 +314,7 @@ def seasonal_tropozone(Obs=True):
     cbar_ticklabels=['%5.1f'%tick for tick in cbar_ticks]
     cbar.set_ticks(cbar_ticks)
     cbar.set_ticklabels(cbar_ticklabels)
-    plt.suptitle("Multi-year average tropospheric ozone",fontsize=28)
+    plt.suptitle("Multi-year average ozone",fontsize=28)
     pname='images/seasonaltropozone.png'
     plt.savefig(pname)
     print('Saved '+pname)
@@ -1249,11 +1256,11 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
-    #brief_summary()
+    brief_summary()
     #summary_plots()
     #plot_andrew_STT()
     #check_extrapolation()
-    plot_SO_extrapolation()
+    #plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
