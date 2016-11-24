@@ -152,10 +152,10 @@ def summary_plots():
         ph.append(plt.bar(left,histo,width,color=evcolours[3],bottom=prev,linewidth=linewidth))
         
         plt.xlim(xlims)
-        if xlab: plt.xlabel('Altitude (km)')
+        if xlab: plt.xlabel(['Altitude (km)','Distance from tropopause (km)'][depth])
         if legend:
             plt.legend( [ p[0] for p in ph ], label, loc='upper right')
-        if ylab: plt.ylabel('Event altitude frequency')
+        if ylab: plt.ylabel('Event count')
     
     def plot_depth(sonde,xlab=False,ylab=False,legend=False):
         plot_altitude(sonde,depth=True,xlab=xlab,ylab=ylab,legend=legend)
@@ -1256,8 +1256,8 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
-    brief_summary()
-    #summary_plots()
+    #brief_summary()
+    summary_plots()
     #plot_andrew_STT()
     #check_extrapolation()
     #plot_SO_extrapolation()
@@ -1265,7 +1265,7 @@ if __name__ == "__main__":
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
-    #time_series()
+    time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
