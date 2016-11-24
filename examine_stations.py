@@ -187,9 +187,9 @@ def plot_andrew_STT():
     width=0.9 # bar widths can be array
     
     plt.figure(figsize=[14,11])
-    # loop over the three types we want to plot.
-    for i in range(4):
-        plt.subplot(411+i)
+    # loop over the three sites we want to plot. (4 if we want laverton)
+    for i in range(3):
+        plt.subplot(311+i)
         plt.bar(left, stts[i,:], width, color='blue',linewidth=linewidth)
         if i==1: plt.ylabel('Event frequency [%]')
         plt.xlim([-0.5, 11.5])
@@ -827,7 +827,7 @@ def time_series(outfile='images/StationSeries.png'):
     '''
     f3, f3axes = plt.subplots(3, 1, sharex=True, figsize=(14,10))
     f3axes[2].set_xlabel('Date')
-    f3axes[1].set_ylabel('Ozone (molec/cm2)')
+    f3axes[1].set_ylabel('$\Omega_{O_3}$ (molec/cm2)')
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
@@ -861,11 +861,13 @@ def time_series(outfile='images/StationSeries.png'):
         print(dates)
         #f3ax.plot_date(dates, data, '-b', label='GEOS-Chem')
         #f3ax.plot_date(sdates, sdata, 'k*', label='sondes')
-        f3ax.plot_date(dates, data, linestyle='None', marker='.', color='grey') 
-        f3ax.plot_date(sdates, sdata, linestyle='None', marker='*',
-                       color=data_colour, label='Ozonesonde')
+        
+        f3ax.plot_date(dates, data, linestyle='None', marker='.', color='pink', alpha=0.5) 
         f3ax.plot_date(mdates, mdata, linestyle='None', marker='.',
                        color=model_colour, label='GEOS-Chem')
+        f3ax.plot_date(sdates, sdata, linestyle='None', marker='*',
+                       color=data_colour, label='Ozonesonde')
+        
         f3ax.set_title(station)
         if i == 0: 
             f3ax.legend(numpoints=1)
@@ -878,7 +880,7 @@ def time_series(outfile='images/StationSeries.png'):
         newax.set_ylim(newylim)
     
     # set plot titles
-    f3.suptitle('Tropospheric ozone column',fontsize=21)
+    f3.suptitle('Tropospheric ozone column ($\Omega_{O_3}$)',fontsize=21)
     
     # set xticks nicely
     f3axes[2].xaxis.set_major_formatter( DateFormatter('%Y-%m') )
@@ -1257,7 +1259,7 @@ def check_GC_output():
 if __name__ == "__main__":
     print ("Running")
     #brief_summary()
-    summary_plots()
+    #summary_plots()
     #plot_andrew_STT()
     #check_extrapolation()
     #plot_SO_extrapolation()
