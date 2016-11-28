@@ -756,6 +756,65 @@ def monthly_profiles(hour=0, degradesondes=False):
         plt.savefig(outfile)
         print("Image saved to %s"%outfile)
         plt.close(f)
+
+def plot_a_profile(date,sondes,GC,legend=False):
+    ## First read the station data
+    
+    stn_name=GC['Station'].split(' ')[0]
+    title=stn_name + date.strftime(" %Y %m %d")
+    
+    SO3s  = sondes.o3ppbv # [time, altitude]
+    SAlts = sondes.gph/1000 # [time, altitude] GPH in km
+    
+    # find matching model profile
+    ymd = np.array([ d.strftime('%Y%m%d') for d in GC['Date']])
+    gcind = np.where( ymd=='%4d%02d%02d'%(date.year,date.month,date.day) )[0]
+    
+    # Using first hour index, since this is 7AM, 11AM, 11AM for our sites
+    #
+    ind=gcind[0]
+    
+    O3 = GC['O3'][ind,:]
+    Altitude=GC['Altitudes'][ind,:] *1e-3 # m to km
+    
+    plt.plot(O3,Altitude,color=model_colour, 
+             linewidth=3, label='GEOS-Chem')
+    
+    # plot the model pressure levels
+    ms=30; mew=1.5    #marker size and edge width
+    plt.plot(O3,Altitude,'_',color=model_colour, ms=ms,mew=mew)
+    #plt.ylabel('Altitude(km)') #plt.xlabel('O3 (ppbv)') #plt.xlim([5,120]) #plt.ylim([0,14])
+    plt.title(title, fontsize=20)
+    
+    ## event profile on same plot
+    Sind  = sondes.get_index(date)
+    plt.plot(SO3s[Sind,:], SAlts[Sind,:], color=data_colour,
+             linewidth=3, label='Sonde')
+    # plot the Sonde pressure levels
+    plt.plot(SO3s[Sind,:], SAlts[Sind,:],'_', color=data_colour, ms=ms,mew=mew*0.8)
+    if legend:
+        plt.legend(loc='upper left',frameon=False)
+    
+def event_profiles_best():
+    ''' plot the  three best profiles side by side '''
+    
+    dates=[datetime(2006,9,22),datetime(2012,12,19),datetime(2010,2,3)]
+    f, axes=plt.subplots(1,3,sharey=True,sharex=True,figsize=(16,13))
+    for i,date in enumerate(dates):
+        #print('plotting %s at %s'%(date.strftime('%Y%m%d'),['dav','mac','melb'][i]))
+        plt.sca(axes[i])
+        sondes=fio.read_sonde(i)
+        gc=fio.read_GC_station(i)
+        plot_a_profile(date,sondes,gc, legend=(i==1))
+    
+    axes[0].set_ylabel('Altitude(km)')
+    plt.sca(axes[1])
+    plt.xlabel('O3 (ppbv)')
+    plt.xlim([5,120])
+    plt.ylim([0,14])
+    pltname='images/eventprofiles/event_profile_comparison.png'
+    plt.savefig(pltname)
+    print (pltname+' saved!')
     
 def event_profiles(station=2, data=None, legend=False):
     '''
@@ -819,8 +878,9 @@ def event_profiles(station=2, data=None, legend=False):
             plt.legend(loc='upper left',frameon=False)
         plt.savefig(outfile)
         print("plotted %s"%date.strftime('%Y%m%d'))
-        plt.close(f)    
+        plt.close(f)
     
+
 def time_series(outfile='images/StationSeries.png'):
     '''
     Plot timeseries for each station, also shows sonde measurements
@@ -1260,6 +1320,7 @@ if __name__ == "__main__":
     print ("Running")
     #brief_summary()
     #summary_plots()
+    event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
     #plot_SO_extrapolation()
@@ -1267,14 +1328,10 @@ if __name__ == "__main__":
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
-    time_series()
+    #time_series()
     #seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
-    #monthly_GC_profiles()
-    #monthly_sonde_profiles()
-    
-    #[monthly_GC_profiles(hour=h) for h in [0,6,12,18] ]
     
