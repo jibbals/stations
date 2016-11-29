@@ -59,6 +59,14 @@ def brief_summary():
         for i in range(12):
             month_inds.append(str(len(s.month_indices(i+1))))
         print ','.join(month_inds)
+        
+        # check points below 10km:
+        #
+        hinds = s.gph < 1e4 # truw when height < 10000m
+        under10=np.nansum(hinds,axis=1) # sum how many measurements below 10km
+        print(np.mean(under10),np.median(under10))
+        #hist=plt.hist(under10,bins=12)
+        
 def summary_plots():
     '''
     Summary of seasonality, STT altitude, STT depth for each site.

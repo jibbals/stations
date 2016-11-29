@@ -132,7 +132,7 @@ class sondes:
         ns= len(self.dates)
         for si in np.arange(0,ns):
             ppbv=np.array(self.o3ppbv[si,:])
-            Z=np.array(self.gph[si,:]) / 1e3
+            Z=np.array(self.gph[si,:]) / 1e3 # m to km
             tpo3=-1.0
 
             ## FIRST
