@@ -29,6 +29,7 @@ from JesseRegression import RMA
 
 # GLOBALS:
 #
+__DEBUG__=False
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
@@ -538,17 +539,30 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
             # determine coincident indices for GEOS-Chem vs sondes at particular hour
             sondeAtHour=np.array([ datetime(d.year,d.month,d.day,hour) for d in sonde.dates ])
             hourmatch = np.in1d(site['Date'], sondeAtHour, assume_unique=True)
+            s_hourmatch = np.in1d(sondeAtHour, site['Date'], assume_unique=False)
             
-            # find coincident indices matching the current month
+            # find coincident indices matching the current season
             inds = np.where( ((allmonths == months[season,0]+1) + 
                 (allmonths == months[season,1]+1) +
                 (allmonths == months[season,2]+1))  * hourmatch )[0]
-            s_inds=np.where((s_allmonths == months[season,0]+1) + 
+            s_inds=np.where( ((s_allmonths == months[season,0]+1) + 
                 (s_allmonths == months[season,1]+1) +
-                (s_allmonths == months[season,2]+1) )[0]
+                (s_allmonths == months[season,2]+1)) * s_hourmatch )[0]
             n, s_n = len(inds), len(s_inds)
             counts[season]=n
             s_counts[season]=s_n
+            
+            if n != s_n:
+                print(np.sum(hourmatch),np.sum(s_hourmatch))
+                print(site['Date'][hourmatch][0])
+                print(site['Date'][hourmatch][1])
+                print(sondeAtHour[s_hourmatch][0])
+                print(sondeAtHour[s_hourmatch][1])
+                #for i,d in enumerate(site['Date'][hourmatch]):
+                #    print(i,d.strftime('%Y%m%d'))
+                #for i,d in enumerate(sondeAtHour[s_hourmatch]):
+                #    print(i,d.strftime('%Y%m%d'))
+                assert False, 'HNNNNGGGGGG'
             
             # each profile needs to be interpolated up to 14km
             profs=np.zeros([n,Znewlen])
@@ -612,7 +626,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
             if j == 2:
                 twinax=plt.twinx()
                 twinax.set_yticks([]) # turn off ticks
-                twinax.set_ylabel(seasonstr[i],fontsize=26)
+                twinax.set_ylabel(seasonstr[i],fontsize=26,color=seasonalcolours[i])
             
             # Print mean bias between model and obs tropopause heights.
             # 
@@ -1328,7 +1342,7 @@ if __name__ == "__main__":
     print ("Running")
     #brief_summary()
     #summary_plots()
-    event_profiles_best()
+    #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
     #plot_SO_extrapolation()
@@ -1337,7 +1351,7 @@ if __name__ == "__main__":
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
     #time_series()
-    #seasonal_profiles(hour=0,degradesondes=False)
+    seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
