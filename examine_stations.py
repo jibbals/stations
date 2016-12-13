@@ -401,13 +401,13 @@ def plot_SO_extrapolation(north=-35,south=-75):
     plt.sca(axes[1])
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     plt.title("Ozone flux from STTs")
-    plt.ylabel('Ozone flux [molec/cm$^2$]')
+    plt.ylabel('Ozone flux [molec cm$^{-2}$]')
     plt.ylim([ylim0, ylim1])
     rax=plt.twinx()
     rax.set_ylim([ylim0tg,ylim1tg])
     rax.set_ylabel('[Tg]')
     # chuck formula onto plot
-    plt.text(0.6,0.8,r'$J_{O_3} = \Omega_{SO_{O_3}} * f * I$', fontsize=28, transform = rax.transAxes)
+    plt.text(0.6,0.8,r'$\Delta \Omega_{O_3} = \Omega_{SO_{O_3}} * f * I$', fontsize=28, transform = rax.transAxes)
     
     ax=axes[0]
     plt.sca(ax)
@@ -416,7 +416,7 @@ def plot_SO_extrapolation(north=-35,south=-75):
     plt.xlim([-0.5, 11.5])
     plt.xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.ylabel('Ozone [molec/cm$^2$]')
+    plt.ylabel('Ozone [molec cm$^{-2}$]')
     
     # plot percentages
     newax=plt.twinx()
@@ -909,7 +909,7 @@ def time_series(outfile='images/StationSeries.png'):
     '''
     f3, f3axes = plt.subplots(3, 1, sharex=True, figsize=(14,10))
     f3axes[2].set_xlabel('Date')
-    f3axes[1].set_ylabel('$\Omega_{O_3}$ (molec/cm2)')
+    f3axes[1].set_ylabel('$\Omega_{O_3}$ [molec cm$^{-2}$]')
     
     # read the three files into a list
     files=[ fio.read_GC_station(f) for f in range(3) ]
@@ -990,7 +990,7 @@ def yearly_cycle(hour=None, outfile='images/Yearly_cycle.png'):
     X=range(12)
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
     plt.xlim([-0.5, 11.5])
-    plt.ylabel('ozone molecules/cm2')
+    plt.ylabel('ozone [molec cm$^{-2}$]')
     colors=['magenta','cyan','orange']
     #for each station do this
     for site, color in zip(sites, colors):
@@ -1219,8 +1219,8 @@ def correlation(outfile='images/correlations.png'):
     o3sondes = [fio.read_sonde(s) for s in range(3) ]
     
     f3, f3axes = plt.subplots(3, 1, figsize=(12,16))
-    f3axes[2].set_xlabel('Sonde $\Omega_{O_3}$ [$molec/cm^2$]',fontsize=20)
-    f3axes[1].set_ylabel('GEOS-Chem $\Omega_{O_3}$ [$molec/cm^2$]',fontsize=20)
+    f3axes[2].set_xlabel('Sonde $\Omega_{O_3}$ [molec cm$^{-2}$]',fontsize=20)
+    f3axes[1].set_ylabel('GEOS-Chem $\Omega_{O_3}$ [molec cm$^{-2}$]',fontsize=20)
     xlims=[[1e17,1e18], [1e17,1e18], [1e17,1.5e18]]
     ylims=[[1e17,1.5e18], [1e17,1.5e18], [1e17, 2e18]]
     ssnmap= {1:0,2:0,3:1,4:1,5:1,6:2,7:2,8:2,9:3,10:3,11:3,12:0} # map month to season:
@@ -1345,13 +1345,13 @@ if __name__ == "__main__":
     #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
-    #plot_SO_extrapolation()
+    plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
     #time_series()
-    seasonal_profiles(hour=0,degradesondes=False)
+    #seasonal_profiles(hour=0,degradesondes=False)
     #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
