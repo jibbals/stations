@@ -372,4 +372,7 @@ class sondes:
         self.rh = 0 # rel humidity
         self.temp = 0 # temperature(Celcius)
         
-        
+    #def determine_events(self):
+    #    '''
+    #    Run bandpass filter and determine event indices.
+    #    '''

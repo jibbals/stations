@@ -1,4 +1,5 @@
 # File input output for ozone stations work 
+# uses python 2.7 'maths' environment
 #
 ########################
 ######## Imports #######
