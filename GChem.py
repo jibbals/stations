@@ -106,6 +106,28 @@ class GChem:
             cb.set_label(label)
         return m,cb
     
+    def averagedTVC(self, Region):
+        '''
+        Average total vertical column for Region
+        Region: [S ,W ,N ,E]        
+        Returns:
+            molecules/cm2 [12 months]
+        '''
+        data=np.zeros(12)
+        allmonths= np.array([ d.month for d in self.dates ])
+        south,west,north,east=Region
+        assert north > south, "North needs to be greater than south"
+        assert east > west, "East needs to be greater than west"
+        
+        loninds=np.where( (east > self.lons) * (self.lons > west) )[0]
+        latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
+        TVC=self.O3tropVC[:, latinds, :]
+        TVC=TVC[:, :, loninds]
+        for i in range(12):
+            minds=np.where(allmonths == i+1)[0]
+            data[i]=np.mean(TVC[minds])
+        return data
+    
     def southernOceanTVC(self, north=-35,south=-75):
         '''
         Get the Tropospheric Vertical Column averaged into months
@@ -115,6 +137,7 @@ class GChem:
         '''
         data=np.zeros(12)
         allmonths= np.array([ d.month for d in self.dates ])
+        
         latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
         SOTVC=self.O3tropVC[:,latinds,:]
         for i in range(12):
@@ -164,7 +187,13 @@ class GCArea:
         #        print ('Changed?')
         return np.sum(self.area[:,inds])
     
-    #def gridbox_area(self, lat, lon):
+    def region_area(self, Region):
+        S,W,N,E=Region
+        lats = (self.lats >= S) * (self.lats <= N) 
+        lons = (self.lons >= W) * (self.lons <= E)
+        Area=self.area[lons,:]
+        Area=Area[:,lats]
+        return np.sum(Area)
     
         
         

@@ -329,6 +329,114 @@ def seasonal_tropozone():
     print('Saved '+pname)
     plt.close(f)
 
+def STT_extrapolation(Region):
+    '''
+    Estimate STT flux in a particular region
+    '''
+    # Read sondes data
+    sonde_files=[fio.read_sonde(s) for s in range(2)]
+    # monthly likelihood = occurrences/sondecount each month, for davis and macquarie
+    n_s=len(sonde_files)
+    likelihood=np.zeros([12,n_s])
+    # monthly flux percentage
+    fluxpct=np.zeros([12,n_s])
+    
+    # for each site:
+    for i, os in enumerate(sonde_files):
+        # indices of all events and all sondes within this month
+        allmonths=np.array([ d.month for d in os.dates ])
+        alleventsmonths=np.array([ d.month for d in os.edates ])
+        # for each month
+        fluxpc=np.array(os.eflux)/np.array(os.etropvc)
+        for month in range(12):
+            inds=np.where(allmonths == month+1)[0]
+            einds=np.where(alleventsmonths == month+1)[0]
+            likelihood[month,i] = len(einds)/ float(len(inds))
+            # Flux pct per month
+            if len(einds) != 0:
+                fluxpct[month,i] = np.mean(fluxpc[einds])
+    
+    # model SO tropospheric O3 Column:
+    GCData=fio.read_GC_global()
+    SOTropO3=GCData.averagedTVC(Region)
+    
+    # plot estimated flux on left hand axis
+    # plot likelihoods and flux pct on the right hand axis
+    I=np.mean(fluxpct, axis=1) # impact
+    f=np.mean(likelihood, axis=1) # frequency
+    flux = SOTropO3 * I * f
+    return I, f, flux, SOTropO3
+
+def plot_extrapolation(Region, pltname='images/STT_extrapolation.png'):
+    '''
+    Plot estimate of STT flux in some particular region
+    '''
+    X=range(12)
+    I, f, flux, GCTropO3 = STT_extrapolation(Region)
+    terao08flux = (flux/I)*0.35
+    # conversion to Tg/yr:
+    gca=fio.get_GC_area()
+    so_area=gca.region_area(Region) # m2
+    g_per_mol=48 # g/Mol
+    molecs=np.sum(flux) # molec/cm2/yr
+    terao08molecs=np.sum(terao08flux)
+    # [molec/cm2/time] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
+    Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # Tg/time
+    terao08tgpm=terao08flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 #
+    # print both values
+    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
+    print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
+    
+    # check_Terao08_impact:
+    print("If we assume the proportion of ozone due to an event is actually 35\%, as in Terao08 for the northern hemisphere:")
+    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%terao08molecs)
+    print("(%5.3e Tg/yr)"%np.sum(terao08tgpm))
+    # set ylimits for plot
+    ylim0, ylim1=0.95*np.min(flux), 1.05*np.max(flux)
+    ylim0tg, ylim1tg = 0.95*np.min(Tg_per_month), 1.05*np.max(Tg_per_month)
+    
+    # Plot the flux and the factors which are used to calculate it
+    plt.clf()
+    fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
+    plt.sca(axes[1])
+    plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
+    plt.title("Ozone flux from STTs")
+    plt.ylabel('Ozone flux [molec cm$^{-2}$]')
+    plt.ylim([ylim0, ylim1])
+    rax=plt.twinx()
+    rax.set_ylim([ylim0tg,ylim1tg])
+    rax.set_ylabel('[Tg]')
+    # chuck formula onto plot
+    plt.text(0.6,0.8,r'$\Delta \Omega_{O_3} = \Omega_{SO_{O_3}} * f * I$', fontsize=28, transform = rax.transAxes)
+    
+    ax=axes[0]
+    plt.sca(ax)
+    l1=plt.plot(X, GCTropO3, 'k', linewidth=2, label="$\Omega_{GC_{O_3}}$")
+    #plt.title("Tropospheric ozone VCs in sub region (GEOS-Chem)")
+    plt.xlim([-0.5, 11.5])
+    plt.xlabel('Month')
+    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
+    plt.ylabel('Ozone [molec cm$^{-2}$]')
+    
+    # plot percentages
+    newax=plt.twinx()
+    # likelihood pct * pct contribution
+    l2=newax.plot(X,I*100*3, color='teal', label='I*3')
+    l3=newax.plot(X,f*100, color='magenta', label='f')
+    
+    # axes and legends
+    #newax.legend(loc=1)
+    newax.set_ylabel('percent')
+    newax.set_ylim([0,35])
+    lns=l1+l2+l3
+    plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
+    sreg="[%dN, %dE, %dN, %dE]"%(Region[0],Region[1],Region[2],Region[3])
+    plt.suptitle('Tropospheric ozone due to STT over %s'%sreg,fontsize=26)
+    
+    # save image
+    plt.savefig(pltname)
+    print("Created image at "+pltname)    
+
 def SO_extrapolation(north=-35,south=-75):
     '''
     Rough estimate of flux over southern ocean
@@ -1345,7 +1453,12 @@ if __name__ == "__main__":
     #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
-    plot_SO_extrapolation()
+    #plot_SO_extrapolation()
+    # N W S E regions:
+    Region1=[-60, 140, -35, 165] # region for Melb and Macca
+    Region2=[-70, 60, -55, 90] # region for Davis
+    plot_extrapolation(Region1,pltname='STT_extrapolation_MelbMac.png')
+    plot_extrapolation(Region2,pltname='STT_extrapolation_Dav.png')
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
