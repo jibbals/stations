@@ -98,7 +98,7 @@ class sondes:
             self.dates[di], \
             self.tp[di], self.tplr[di], self.tpo3[di])
         return profile
-    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16)):
+    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False):
         import matplotlib.pyplot as plt
         prof=self.get_profile(date)
         date2=prof[4]
@@ -111,14 +111,18 @@ class sondes:
         ax1.plot(prof[1],yaxi,'k',linewidth=2.0)
         ax2 = ax1.twiny()
         ax2.plot(prof[2],yaxi,'r')
-        ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
+        if alltps:
+            ax1.plot([xl,xr],[prof[6],prof[6]],'--r')
+            ax1.plot([xl,xr],[prof[7],prof[7]],'--k')
+        else:
+            ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
         ax1.set_ylim(yl,yr)
         ax1.set_xlim(xl,xr)
-        ax2.set_xlim(-55,25)
+        ax2.set_xlim(-75,25)
         #plt.yscale('log')
         
         ax1.set_ylabel('GPH (km)')
-        ax2.set_xlabel('Temp (C)')
+        ax2.set_xlabel('Temp (C)', color='r')
         ax1.set_xlabel('Ozone (ppbv)')
 
         title=self.name+' '+date2.strftime('%Y-%m-%d')
@@ -133,7 +137,7 @@ class sondes:
         for si in np.arange(0,ns):
             ppbv=np.array(self.o3ppbv[si,:])
             Z=np.array(self.gph[si,:]) / 1e3 # m to km
-            tpo3=-1.0
+            tpo3=np.NaN
 
             ## FIRST
             ## set the ozone tropopause
@@ -146,8 +150,8 @@ class sondes:
             testrange=np.intersect1d(z1,z2)
             upper = [ 2.0, 1.5 ][polar]
             if np.size(testrange) < 2 or np.size(Z) < 2 :
-                self.tpo3.append(-1)
-                self.tplr.append(-1)
+                self.tpo3.append(np.NaN)
+                self.tplr.append(np.NaN)
                 continue
             for ind in testrange:
                 
@@ -170,7 +174,7 @@ class sondes:
             
             ## SECOND 
             ## find temperature tropopause
-            tplr=-1.0
+            tplr=np.NaN # if not set here leave it as NAN
             rate=-2.0
             minh=2.0
             temp=np.array(self.temp[si,:])
@@ -186,16 +190,27 @@ class sondes:
                 z2=np.where(Z < (alt+2.0))[0]
                 checks =np.intersect1d(z1,z2) 
                 
+                # OLD WAY:
                 if np.mean(lapse[checks]) > rate :
+                    if alt < 4:
+                        print("DEBUG:")
+                        print("Lapse Rate")
+                        print(lapse[checks])    # lapse rate
+                        print("Z:")
+                        print(Z[checks])
+                        print("Range checked:")
+                        print(checks)   # Where we loooked
                     tplr=alt
                     break
             self.tplr.append(tplr)
         ## FINALLY
         # tp is minimum of lapse rate and ozone tropopause
-        self.tp = np.minimum(self.tplr,self.tpo3).tolist()
+        self.tp = np.minimum(self.tplr,self.tpo3).tolist() 
+        
+        # add index of tropopause level to sonde profile
         for i in range(ns):
             Z=np.array(self.gph[i,:])/1e3
-            if self.tp[i]  == -1:
+            if np.isnan(self.tp[i]):
                 self.tpinds.append(np.NaN)
             else:
                 self.tpinds.append(np.where(Z == self.tp[i])[0][0])

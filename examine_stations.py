@@ -214,7 +214,25 @@ def plot_andrew_STT():
     plt.savefig(pltname)
     print('saved '+pltname)
 
-def seasonal_tropopause(show_event_tropopauses=False):
+def check_weird_tp():
+    ''' show profiles where tropopause reading is weird '''
+    sondes = [ fio.read_sonde(site=j) for j in range(3) ]
+    for si,sonde in enumerate(sondes):
+        name=sonde.name
+        tp = np.array(sonde.tp)
+        tplr = np.array(sonde.tplr)
+        tpo3 = np.array(sonde.tpo3)
+        for i,t in enumerate(tp):
+            if t < 4:
+                date=sonde.dates[i]
+                dstr=date.strftime('%Y%m%d')
+                print ("%s %s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(name,dstr,tp[i],tplr[i],tpo3[i]))
+                fig=sonde.plot_profile(date=date, alltps=True)
+                fig.savefig('images/eventprofiles/temp/%s%s'%(name,dstr))
+            continue
+    
+    
+def seasonal_tropopause(show_event_tropopauses=False, shading=False):
     ''' Plot seasonal tropopause heights for each station '''
     #sonde data
     sondes = [ fio.read_sonde(site=j) for j in range(3) ]
@@ -227,14 +245,15 @@ def seasonal_tropopause(show_event_tropopauses=False):
     Xstr=['J','F','M','A','M','J','J','A','S','O','N','D']
     colours=['k','chocolate','magenta']
     
-    tp_m=np.zeros([12,3])
-    tp_u=np.zeros([12,3])
-    tp_d=np.zeros([12,3])
-    tp_e=np.zeros([12,3])
+    tp_m=np.zeros([12,3]) # median tropopause
+    tp_u=np.zeros([12,3]) # upper percentile
+    tp_d=np.zeros([12,3]) # downward percentile
+    tp_e=np.zeros([12,3]) # event median tropopause
     for si,sonde in enumerate(sondes):
         for month in range(12):
             minds   = sonde.month_indices(month+1)
             tps     = np.array(sonde.tp)[minds]
+            
             if show_event_tropopauses:
                 eminds  = np.array(list(set.intersection(set(minds),set(sonde.einds))))
                 # if no events in this month
@@ -247,13 +266,23 @@ def seasonal_tropopause(show_event_tropopauses=False):
             tp_d[month,si]      = np.nanpercentile(tps, 10)
         # plot the median and shade the 80% percentile range
         plt.plot(X,tp_m[:,si],color=colours[si],label=sonde.name,linewidth=3)
-        plt.fill_between(X, tp_d[:,si], tp_u[:,si], color=colours[si],alpha=0.4)
+        if shading:
+            plt.fill_between(X, tp_d[:,si], tp_u[:,si], color=colours[si],alpha=0.4)
+        else:
+            plt.plot(X,tp_d[:,si], color=colours[si], linewidth=2, linestyle='--')
+            plt.plot(X,tp_u[:,si], color=colours[si], linewidth=2, linestyle='--')
         if show_event_tropopauses:
             # dotted line on event tpheights
             plt.plot(X, tp_e[:,si], '--',color=colours[si])
+        print(sonde.name)
+        print("Max TP: %5.2e"%np.nanmax(sonde.tp))
+        print("Min TP: %5.2e"%np.nanmin(sonde.tp))
     plt.xticks(X,Xstr)
     plt.xlim([-0.5,11.5])
-    plt.ylim([4,17])
+    lbound,ubound=np.floor(np.nanmin(tp_d)), np.ceil(np.nanmax(tp_u))
+    print([lbound,ubound])
+    ylimits=[lbound,ubound]
+    plt.ylim(ylimits)
     plt.ylabel('Altitude [km]',fontsize=20)
     plt.xlabel('Month',fontsize=20)
     plt.legend(fontsize=22,loc=0,frameon=False)
@@ -386,6 +415,7 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png'):
     # print both values
     print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
     print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
+    print("This occurs over %5.3e square kilometres"%(so_area/1e6))
     
     # check_Terao08_impact:
     print("If we assume the proportion of ozone due to an event is actually 35\%, as in Terao08 for the northern hemisphere:")
@@ -575,7 +605,7 @@ def check_extrapolation():
 
 def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
     '''
-    Profile mean and std deviation for each month for each site
+    Profile mean and std deviation for each season for each site
     If you only want to consider a particular hour then set the hour parameter
         hour can be one of [0, 6, 12, 18]
     set degradesondes=True to degrade the sondes to matching GEOS-Chem resolution before finding the average..
@@ -618,9 +648,9 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
         TP = site['TropopauseAltitude'] / 1000.0
         Z  = site['Altitudes']/1000.0 
         s_Z  = np.array(sonde.gph) / 1000.0 
-        # Interpolate to grid up to 14km
+        # Interpolate to grid up to 15km
         Znewlen = 200
-        Znew= np.linspace(0,14,Znewlen)
+        Znew= np.linspace(0,15,Znewlen)
         # need to vertically bin the O3 profiles,
         # interpolated at 100 points up to 14km
         means=np.zeros([4,Znewlen])
@@ -633,8 +663,8 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
         counts = np.zeros(4)
         s_means=np.zeros([4,Znewlen])
         s_medians=np.zeros([4,Znewlen])
-        s_pcta = np.zeros([4,Znewlen]) # 5th percentile
-        s_pctb = np.zeros([4,Znewlen]) # 95th percentile
+        s_pcta = np.zeros([4,Znewlen]) # ath percentile
+        s_pctb = np.zeros([4,Znewlen]) # bth percentile
         s_stds =np.zeros([4,Znewlen])
         s_TPm = np.zeros(4)
         s_TPstd = np.zeros(4)
@@ -696,7 +726,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
             
         stn_name=site['Station'].split(' ')[0]
         
-        # plot the median profiles and shade the area of 5th-95th percentile
+        # plot the median profiles and shade the area of xth-(100-x)th percentile
         for i in range(4):
             plt.sca(axes[i,j]) # set current axis
             X=medians[i,:]                
@@ -735,6 +765,7 @@ def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
                 twinax=plt.twinx()
                 twinax.set_yticks([]) # turn off ticks
                 twinax.set_ylabel(seasonstr[i],fontsize=26,color=seasonalcolours[i])
+                    
             
             # Print mean bias between model and obs tropopause heights.
             # 
@@ -1457,9 +1488,10 @@ if __name__ == "__main__":
     # N W S E regions:
     Region1=[-60, 140, -35, 165] # region for Melb and Macca
     Region2=[-70, 60, -55, 90] # region for Davis
-    plot_extrapolation(Region1,pltname='STT_extrapolation_MelbMac.png')
-    plot_extrapolation(Region2,pltname='STT_extrapolation_Dav.png')
-    #seasonal_tropopause() # plot tpheights.png
+    #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
+    #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
+    #check_weird_tp()# look at profile of low tp sondes
+    seasonal_tropopause(shading=False) # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
