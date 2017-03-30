@@ -218,19 +218,32 @@ def check_weird_tp():
     ''' show profiles where tropopause reading is weird '''
     sondes = [ fio.read_sonde(site=j) for j in range(3) ]
     for si,sonde in enumerate(sondes):
-        name=sonde.name
+        name=sonde.name        
+        print(name)
         tp = np.array(sonde.tp)
         tplr = np.array(sonde.tplr)
         tpo3 = np.array(sonde.tpo3)
+        diffs=[]
+        lows=[]
         for i,t in enumerate(tp):
+            date=sonde.dates[i]
+            dstr=date.strftime('%Y%m%d')
+            pname='images/eventprofiles/temp/'
+            extra=''
             if t < 4:
-                date=sonde.dates[i]
-                dstr=date.strftime('%Y%m%d')
-                print ("%s %s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(name,dstr,tp[i],tplr[i],tpo3[i]))
-                fig=sonde.plot_profile(date=date, alltps=True)
-                fig.savefig('images/eventprofiles/temp/%s%s'%(name,dstr))
-            continue
-    
+                lows.append("%s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(dstr,tp[i],tplr[i],tpo3[i]))
+                extra='_low'
+            elif np.abs(tplr[i]-tpo3[i]) > 3:
+                diffs.append("%s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(dstr,tp[i],tplr[i],tpo3[i]))
+                extra='_dif'
+            pname=pname+'%s%s%s.png'%(name,dstr,extra)
+            fig=sonde.plot_profile(date=date, ytop=18, rh=True, alltps=True)
+            plt.savefig(pname)
+            plt.close(fig)
+        print ("tp < 4km altitude")
+        for low in lows: print(low)
+        print ("tp difference > 3km")
+        for diff in diffs: print(diff)
     
 def seasonal_tropopause(show_event_tropopauses=False, shading=False):
     ''' Plot seasonal tropopause heights for each station '''
@@ -466,6 +479,27 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png'):
     # save image
     plt.savefig(pltname)
     print("Created image at "+pltname)    
+    plt.close(fig)
+    
+    # calculate monthly flux in kg/km2/s (to compare with skerlak2014)
+    # flux : [molecules O3/ cm2 / month]
+    # x [mol/molecule * g/mol * cm2/km2 * month/s]
+    dayspermonth=np.array([31,28.25,31,30,31,30,31,31,30,31,30,31])
+    secondsperday= 24*60*60
+    secondspermonth=dayspermonth * secondsperday
+    flux2 = flux * 1e10 # molecules / km2 / month
+    flux2 = flux2 * (1.0/secondspermonth) # molecules / km2 / s
+    # THIS CALCULATION IS NOT REALLY APPLICABLE AS MY /month dimension is FALSE
+    flux2 = flux2 * g_per_mol * (1/N_A) # g / km2 / s
+    f=plt.figure(figsize=[8,5])
+    plt.plot(X, flux2)
+    plt.xlim([-0.5, 11.5])
+    plt.xlabel('Month')
+    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
+    plt.ylabel('flux [g km$^{-2}$ s$^{-1}$]')
+    plt.title("Monthly flux over %s"%sreg)
+    plt.savefig("images/STT_extrap_temp.png")
+    # TODO: abs/relative uncertainties from standard deviations and add these units/uncertainties to prior plot
 
 def SO_extrapolation(north=-35,south=-75):
     '''
@@ -1490,8 +1524,8 @@ if __name__ == "__main__":
     Region2=[-70, 60, -55, 90] # region for Davis
     #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
     #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
-    #check_weird_tp()# look at profile of low tp sondes
-    seasonal_tropopause(shading=False) # plot tpheights.png
+    check_weird_tp()# look at profile of low tp sondes
+    #seasonal_tropopause(shading=False) # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]

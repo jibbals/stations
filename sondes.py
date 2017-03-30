@@ -98,7 +98,7 @@ class sondes:
             self.dates[di], \
             self.tp[di], self.tplr[di], self.tpo3[di])
         return profile
-    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False):
+    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False, rh=False):
         import matplotlib.pyplot as plt
         prof=self.get_profile(date)
         date2=prof[4]
@@ -116,9 +116,29 @@ class sondes:
             ax1.plot([xl,xr],[prof[7],prof[7]],'--k')
         else:
             ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
+        if rh:
+            
+            ax3 = ax1.twiny()
+            ax3.plot(prof[3], 'b')
+            # Move twinned axis ticks and label from top to bottom
+            ax3.xaxis.set_ticks_position("bottom")
+            ax3.xaxis.set_label_position("bottom")
+            
+            # Offset the twin axis below the host
+            ax3.spines["bottom"].set_position(("axes", -0.15))
+            ax3.set_frame_on(True)
+            ax3.patch.set_visible(False)
+            for sp in ax2.spines.itervalues():
+                sp.set_visible(False)
+            ax3.spines["bottom"].set_visible(True)
+            ax3.set_xticks(np.arange(0,100.1,25.0))
+            ax3.set_xlim(0,100)
+            ax3.set_xlabel('RH(%)')
+            
         ax1.set_ylim(yl,yr)
         ax1.set_xlim(xl,xr)
         ax2.set_xlim(-75,25)
+        
         #plt.yscale('log')
         
         ax1.set_ylabel('GPH (km)')
@@ -186,22 +206,40 @@ class sondes:
             testrange=np.where(lapse > rate)[0]
             for ind in testrange[0:-1]:
                 alt=Z[ind]
+                
+                # we will look at subsequent 2km above each test point
                 z1=np.where(Z > alt)[0]
                 z2=np.where(Z < (alt+2.0))[0]
                 checks =np.intersect1d(z1,z2) 
                 
-                # OLD WAY:
+                # thickness criterion Zangl 2001 Appendix A
+                #Ttp=temp[ind]
+                #Ztp=Z[ind]
+                #criterion=True
+                #for j in checks:
+                #    if ((temp[j]-Ttp)/(Z[j]-Ztp) < -2):
+                #        criterion=False
+                #        break
+                #    else:
+                #        continue
+                #if criterion:
+                #    tplr=alt
+                #    break
+                        
+                # My WAY:
                 if np.mean(lapse[checks]) > rate :
-                    if alt < 4:
-                        print("DEBUG:")
-                        print("Lapse Rate")
-                        print(lapse[checks])    # lapse rate
-                        print("Z:")
-                        print(Z[checks])
-                        print("Range checked:")
-                        print(checks)   # Where we loooked
                     tplr=alt
                     break
+            
+            __DEBUG__=False
+            if (tplr < 4) and __DEBUG__:
+                print("DEBUG:")
+                print("Lapse Rate")
+                print(lapse[checks])    # lapse rate
+                print("Z:")
+                print(Z[checks])
+                print("Range checked:")
+                print(checks)   # Where we loooked
             self.tplr.append(tplr)
         ## FINALLY
         # tp is minimum of lapse rate and ozone tropopause
