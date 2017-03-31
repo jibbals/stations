@@ -98,7 +98,7 @@ class sondes:
             self.dates[di], \
             self.tp[di], self.tplr[di], self.tpo3[di])
         return profile
-    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False, rh=False):
+    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False, rh=True, ):
         import matplotlib.pyplot as plt
         prof=self.get_profile(date)
         date2=prof[4]
@@ -117,9 +117,8 @@ class sondes:
         else:
             ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
         if rh:
-            
             ax3 = ax1.twiny()
-            ax3.plot(prof[3], 'b')
+            ax3.plot(prof[3], yaxi, 'b')
             # Move twinned axis ticks and label from top to bottom
             ax3.xaxis.set_ticks_position("bottom")
             ax3.xaxis.set_label_position("bottom")
@@ -134,6 +133,7 @@ class sondes:
             ax3.set_xticks(np.arange(0,100.1,25.0))
             ax3.set_xlim(0,100)
             ax3.set_xlabel('RH(%)')
+            fig.tight_layout()
             
         ax1.set_ylim(yl,yr)
         ax1.set_xlim(xl,xr)
@@ -148,7 +148,7 @@ class sondes:
         title=self.name+' '+date2.strftime('%Y-%m-%d')
         ax1.set_title(title,x=0.5,y=0.93)
         return(fig)
-    def _set_tps(self):
+    def _set_tps(self, zangl=False):
         
         polar = (np.abs(self.lat) > 60)
 
@@ -196,7 +196,7 @@ class sondes:
             ## find temperature tropopause
             tplr=np.NaN # if not set here leave it as NAN
             rate=-2.0
-            minh=2.0
+            minh=4.0 #UPDATED FROM 2 TO 4 KM Fri 31 MAR 2017
             temp=np.array(self.temp[si,:])
             temp=temp[Z > minh]
             Z=Z[Z>minh]
@@ -213,26 +213,26 @@ class sondes:
                 checks =np.intersect1d(z1,z2) 
                 
                 # thickness criterion Zangl 2001 Appendix A
-                #Ttp=temp[ind]
-                #Ztp=Z[ind]
-                #criterion=True
-                #for j in checks:
-                #    if ((temp[j]-Ttp)/(Z[j]-Ztp) < -2):
-                #        criterion=False
-                #        break
-                #    else:
-                #        continue
-                #if criterion:
-                #    tplr=alt
-                #    break
-                        
-                # My WAY:
-                if np.mean(lapse[checks]) > rate :
-                    tplr=alt
-                    break
+                if zangl:
+                    Ttp=temp[ind]
+                    Ztp=Z[ind]
+                    criterion=True
+                    for j in checks:
+                        if ((temp[j]-Ttp)/(Z[j]-Ztp) < -2):
+                            criterion=False
+                            break
+                        else:
+                            continue
+                    if criterion:
+                        tplr=alt
+                        break
+                else: # my way
+                    if np.mean(lapse[checks]) > rate :
+                        tplr=alt
+                        break
             
             __DEBUG__=False
-            if (tplr < 4) and __DEBUG__:
+            if (tplr < 5) and __DEBUG__:
                 print("DEBUG:")
                 print("Lapse Rate")
                 print(lapse[checks])    # lapse rate

@@ -214,7 +214,7 @@ def plot_andrew_STT():
     plt.savefig(pltname)
     print('saved '+pltname)
 
-def check_weird_tp():
+def check_weird_tp(year=2006):
     ''' show profiles where tropopause reading is weird '''
     sondes = [ fio.read_sonde(site=j) for j in range(3) ]
     for si,sonde in enumerate(sondes):
@@ -225,22 +225,25 @@ def check_weird_tp():
         tpo3 = np.array(sonde.tpo3)
         diffs=[]
         lows=[]
-        for i,t in enumerate(tp):
-            date=sonde.dates[i]
-            dstr=date.strftime('%Y%m%d')
-            pname='images/eventprofiles/temp/'
-            extra=''
-            if t < 4:
-                lows.append("%s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(dstr,tp[i],tplr[i],tpo3[i]))
-                extra='_low'
-            elif np.abs(tplr[i]-tpo3[i]) > 3:
-                diffs.append("%s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(dstr,tp[i],tplr[i],tpo3[i]))
-                extra='_dif'
-            pname=pname+'%s%s%s.png'%(name,dstr,extra)
-            fig=sonde.plot_profile(date=date, ytop=18, rh=True, alltps=True)
-            plt.savefig(pname)
-            plt.close(fig)
-        print ("tp < 4km altitude")
+        for zangl in [True, False]:
+            sonde._set_tps(zangl=zangl)
+            for i,t in enumerate(tp):
+                date=sonde.dates[i]
+                if date.year == year:
+                    dstr=date.strftime('%Y%m%d')
+                    pname='images/eventprofiles/temp/'+['','zangl_'][zangl]
+                    extra=''
+                    if t < 5:
+                        lows.append("%s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(dstr,tp[i],tplr[i],tpo3[i]))
+                        extra='_low'
+                    elif np.abs(tplr[i]-tpo3[i]) > 3:
+                        diffs.append("%s: tp,tplr,tpo3: %5.3e %5.3e %5.3e"%(dstr,tp[i],tplr[i],tpo3[i]))
+                        extra='_dif'
+                    pname=pname+'%s%s%s.png'%(name,dstr,extra)
+                    fig=sonde.plot_profile(date=date, ytop=18, rh=True, alltps=True)
+                    plt.savefig(pname)
+                    plt.close(fig)
+        print ("tp < 5km altitude")
         for low in lows: print(low)
         print ("tp difference > 3km")
         for diff in diffs: print(diff)
@@ -1524,7 +1527,7 @@ if __name__ == "__main__":
     Region2=[-70, 60, -55, 90] # region for Davis
     #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
     #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
-    check_weird_tp()# look at profile of low tp sondes
+    check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
