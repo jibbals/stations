@@ -1516,8 +1516,8 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
-    #brief_summary()
-    #summary_plots()
+    brief_summary()
+    summary_plots()
     #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
@@ -1527,14 +1527,14 @@ if __name__ == "__main__":
     Region2=[-70, 60, -55, 90] # region for Davis
     #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
     #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
-    check_weird_tp(2006)# look at profile of low tp sondes
+    #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
-    #seasonal_tropozone()
+    #seasonal_tropozone() # plot seasonaltropozone.png
     #check_GC_output()
-    #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
-    #time_series()
-    #seasonal_profiles(hour=0,degradesondes=False)
-    #monthly_profiles(hour=0,degradesondes=False)
+    [event_profiles(s,legend = (s==1)) for s in [0,1,2]]
+    time_series()
+    seasonal_profiles(hour=0,degradesondes=False)
+    monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
