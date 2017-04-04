@@ -108,12 +108,16 @@ class GChem:
     
     def averagedTVC(self, Region):
         '''
-        Average total vertical column for Region
+        Average tropospheric vertical column for Region
         Region: [S ,W ,N ,E]        
-        Returns:
-            molecules/cm2 [12 months]
+        Returns: data, std
+            data
+            std. deviation
+        Return units: molecules/cm2
+        Return dimension: 12 months
         '''
         data=np.zeros(12)
+        std=np.zeros(12)
         allmonths= np.array([ d.month for d in self.dates ])
         south,west,north,east=Region
         assert north > south, "North needs to be greater than south"
@@ -126,7 +130,8 @@ class GChem:
         for i in range(12):
             minds=np.where(allmonths == i+1)[0]
             data[i]=np.mean(TVC[minds])
-        return data
+            std[i]=np.std(TVC[minds])
+        return data, std
     
     def southernOceanTVC(self, north=-35,south=-75):
         '''

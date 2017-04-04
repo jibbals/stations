@@ -29,7 +29,7 @@ from JesseRegression import RMA
 
 # GLOBALS:
 #
-__DEBUG__=False
+__DEBUG__=True
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
@@ -377,69 +377,227 @@ def seasonal_tropozone():
 def STT_extrapolation(Region):
     '''
     Estimate STT flux in a particular region
+    Region: [S ,W ,N ,E]
+    Returns: return ILMT, flux, uncertainty
+        ILMT= numpy array(4,12),
+        flux=product on axis 0,
+        uncertainty is proportional for ILMT (simply add for product uncertainty)
+        
+        I, L, M are mean measured monthly (I)mpact, (L)ikelihood, and (M)easurement count
+        T is GEOS-Chem tropospheric ozone column, Flux is these 4 factors multiplied
     '''
     # Read sondes data
-    sonde_files=[fio.read_sonde(s) for s in range(2)]
-    # monthly likelihood = occurrences/sondecount each month, for davis and macquarie
-    n_s=len(sonde_files)
-    likelihood=np.zeros([12,n_s])
-    # monthly flux percentage
-    fluxpct=np.zeros([12,n_s])
+    all_sonde_files=[fio.read_sonde(s) for s in range(3)]
     
-    # for each site:
-    for i, os in enumerate(sonde_files):
-        # indices of all events and all sondes within this month
-        allmonths=np.array([ d.month for d in os.dates ])
-        alleventsmonths=np.array([ d.month for d in os.edates ])
-        # for each month
-        fluxpc=np.array(os.eflux)/np.array(os.etropvc)
-        for month in range(12):
-            inds=np.where(allmonths == month+1)[0]
-            einds=np.where(alleventsmonths == month+1)[0]
-            likelihood[month,i] = len(einds)/ float(len(inds))
-            # Flux pct per month
-            if len(einds) != 0:
-                fluxpct[month,i] = np.mean(fluxpc[einds])
+    # we only use sondes within extrapolation region...
+    def in_region(lat,lon):
+        return ((lat<Region[2])*(lat>Region[0])*(lon>Region[1])*(lon<Region[3]))
+    sonde_files = [sf for sf in all_sonde_files if in_region(sf.lat,sf.lon)]
+    if __DEBUG__:
+        print("STT_Extrapolation")
+        print(Region)
+        print("Contains sites:")
+        print([s.name for s in sonde_files])
     
     # model SO tropospheric O3 Column:
     GCData=fio.read_GC_global()
-    SOTropO3=GCData.averagedTVC(Region)
+    TropO3, TropO3_stdev = GCData.averagedTVC(Region)
+    
+    # How many sondes have we:
+    n_s=len(sonde_files)
+    
+    # monthly (I)mpact (event O3 / trop O3):
+    # Events per measurement or (L)ikelihood:
+    # (M)easurements per month
+    
+    # Std_deviation of each factor
+    ILMT_stdev=np.zeros([4,12,n_s]) 
+    
+    # for each site:
+    for ii, os in enumerate(sonde_files):
+        # indices of all events and all sondes within this month
+        allyears=np.array([ d.year for d in os.dates ])
+        n_years=len(set(allyears))
+        allmonths=np.array([ d.month for d in os.dates ])
+        alleventsmonths=np.array([ d.month for d in os.edates ])
+        alleventsyears=np.array([ d.year for d in os.edates ])
+        # How many of each month do the measurements span?
+        n_months_check = np.array([len(set([date.year for date in os.dates if date.month == month])) for month in np.arange(1,12.1)])
+        
+        ILMT=np.ndarray([4,12,n_years]) +np.NaN# factors for each month each year
+        
+        # for each year
+        for yi,year in enumerate(set(allyears)):
+            # for each month
+            for mi in range(12):
+                inds=(allmonths == mi+1) * (allyears == year)
+                einds=(alleventsmonths == mi+1) * (alleventsyears == year)
+                if np.sum(inds)==0: 
+                    if __DEBUG__: 
+                        print("%s has no measurements on %d-%d"%(os.name,year,mi+1))
+                    continue # no measuremets this month & year
+                ILMT[2,mi,yi] = np.sum(inds) # count of this months measurements
+                ILMT[0,mi,yi] = 0.0 # Impact
+                ILMT[1,mi,yi] = 0.0 # Likelihood
+                if np.sum(einds) != 0:
+                    ILMT[0,mi,yi] = np.mean(np.array(os.eflux)[einds]/np.array(os.etropvc)[einds]) # Impact
+                    ILMT[1,mi,yi] = len(einds)/ float(len(inds)) # Likelihood of event per measurement
+            ILMT[3,:,yi]=TropO3
+            
+            # Divide monthly measurements by how many of each month there are
+            ILMT[2,:,yi]=ILMT[2,:,yi]/n_months_check.astype(float)
+        
+        # get the stdev
+        ILMT_stdev[:,:,ii]=np.nanstd(ILMT,axis=2)
+        ILMT_stdev[3,:,ii]=TropO3_stdev
+        
+        
+        if __DEBUG__:
+            print("%s spans this many of each month:"%(os.name))
+            print(n_months_check)
+        
+        ILMT=np.nanmean(ILMT,axis=2) # take multiyear monthly average
+        
+        if __DEBUG__:
+            print("With this many measurements per month:")
+            print(ILMT[2,:,ii])
+    
+    ## Now we take the average between the sites
+    #
+    
+    # uncertainty reduced by root of independent measurement count
+    # assume each sonde site is independent
+    ILMT_stdev=np.nanmean(ILMT_stdev,axis=2) / np.sqrt(n_s) 
+    # proportional uncertainty
+    uncertainty= ILMT_stdev * 100.0 / ILMT
+    
+    ILMT=np.mean(ILMT, axis=2) # Average between sondes
+    
+    flux = np.nanprod(ILMT,axis=0)
+    return ILMT, flux, uncertainty
+
+def STT_extrapolation_noSTD(Region):
+    '''
+    Estimate STT flux in a particular region
+    Region: [S ,W ,N ,E]
+    Returns: I, L, M, TropO3, Flux
+        I, L, M are mean measured monthly (I)mpact, (L)ikelihood, and (M)easurement count
+        TropO3 is GEOS-Chem tropospheric ozone column, Flux is these 4 factors multiplied,
+        std_dev_ILMT is std deviation of each factor
+    '''
+    # Read sondes data
+    all_sonde_files=[fio.read_sonde(s) for s in range(3)]
+    
+    # we only use sondes within extrapolation region...
+    def in_region(lat,lon):
+        return ((lat<Region[2])*(lat>Region[0])*(lon>Region[1])*(lon<Region[3]))
+    sonde_files = [sf for sf in all_sonde_files if in_region(sf.lat,sf.lon)]
+    if __DEBUG__:
+        print("STT_Extrapolation")
+        print(Region)
+        print("Contains sites:")
+        print([s.name for s in sonde_files])
+    
+    # How many sondes have we:
+    n_s=len(sonde_files)
+
+    # monthly (I)mpact (event O3 / trop O3):
+    I=np.zeros([12,n_s])    
+    # Events per measurement or (L)ikelihood:
+    L=np.zeros([12,n_s])
+    # (M)easurements per month
+    M=np.zeros([12,n_s])
+    # how many of each month does each site have measurements for:
+    n_months=np.zeros([12,n_s])
+    n_months2=np.zeros([12,n_s])
+    
+    # Std_deviation of each factor
+    std_dev_ILMT=np.zeros([4,12,n_s]) 
+    
+    # for each site:
+    for ii, os in enumerate(sonde_files):
+        # indices of all events and all sondes within this month
+        allyears=np.array([ d.year for d in os.dates ])
+        allmonths=np.array([ d.month for d in os.dates ])
+        alleventsmonths=np.array([ d.month for d in os.edates ])
+        
+        n_releases=[[] for jj in range(12)]
+        # for each year
+        for year in set(allyears):
+            # add month counts
+            for month in range(12)+1:
+                inds= (allyears==year) * (allmonths==month)
+                if np.sum(inds)==0: continue
+                n_releases[month-1].append(np.sum(inds))
+        std_dev_ILMT[2,:,ii] = np.array([np.std(n_releases[jj]) for jj in range(12)])
+        
+        n_months[:,ii] = [len(n_releases[jj]) for jj in range(12)]
+        # this works but we want the std. deviation...
+        n_months2[:,ii] = [len(set([date.year for date in os.dates if date.month == month])) for month in np.arange(1,12.1)]
+        
+        if __DEBUG__:
+            assert n_months[:,ii] == n_months2[:, ii], (n_months[:,ii],n_months2[:,ii])
+            print("%s has this many of each month:"%(os.name))
+            print(n_months[:,ii])
+        
+        # for each month
+        I_month=np.array(os.eflux)/np.array(os.etropvc)
+        for month in range(12):
+            inds=np.where(allmonths == month+1)[0]
+            einds=np.where(alleventsmonths == month+1)[0]
+            # Likelihood of event per measurement
+            L[month,ii] = len(einds)/ float(len(inds))
+            std_dev_ILMT[1,month,ii] = np.std()
+            # Measurements per month:
+            M[month,ii] = len(inds)/float(n_months[month,ii])
+            # Flux pct per month
+            if len(einds) != 0:
+                I[month,ii] = np.mean(I_month[einds])
+        if __DEBUG__:
+            print("And this many measurements per month:")
+            print(M[:,ii])
+        
+    # model SO tropospheric O3 Column:
+    GCData=fio.read_GC_global()
+    TropO3=GCData.averagedTVC(Region)
     
     # plot estimated flux on left hand axis
     # plot likelihoods and flux pct on the right hand axis
-    I=np.mean(fluxpct, axis=1) # impact
-    f=np.mean(likelihood, axis=1) # frequency
-    flux = SOTropO3 * I * f
-    return I, f, flux, SOTropO3
+    mean_I=np.mean(I, axis=1) # impact proportion
+    mean_L=np.mean(L, axis=1) # events per sonde
+    mean_M=np.mean(M, axis=1) # sondes per month
+    flux = TropO3 * mean_I * mean_L * mean_M
+    return mean_I, mean_L, mean_M, flux, TropO3
 
-def plot_extrapolation(Region, pltname='images/STT_extrapolation.png'):
+def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', measurementbracket=False):
     '''
     Plot estimate of STT flux in some particular region
+    Region: [S ,W ,N ,E]
     '''
     X=range(12)
-    I, f, flux, GCTropO3 = STT_extrapolation(Region)
-    terao08flux = (flux/I)*0.35
+    ILMT, flux, uncertainty = STT_extrapolation(Region)
+    I=ILMT[0,:]
+    L=ILMT[0,:]
+    M=ILMT[0,:]
+    GCTropO3=ILMT[0,:]
+    
     # conversion to Tg/yr:
     gca=fio.get_GC_area()
     so_area=gca.region_area(Region) # m2
     g_per_mol=48 # g/Mol
     molecs=np.sum(flux) # molec/cm2/yr
-    terao08molecs=np.sum(terao08flux)
+    
     # [molec/cm2/time] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
     Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # Tg/time
-    terao08tgpm=terao08flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 #
+    
     # print both values
     print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
     print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
-    print("This occurs over %5.3e square kilometres"%(so_area/1e6))
+    print("This occurs over %5.3e km2"%(so_area/1e6))
     
-    # check_Terao08_impact:
-    print("If we assume the proportion of ozone due to an event is actually 35\%, as in Terao08 for the northern hemisphere:")
-    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%terao08molecs)
-    print("(%5.3e Tg/yr)"%np.sum(terao08tgpm))
     # set ylimits for plot
-    ylim0, ylim1=0.95*np.min(flux), 1.05*np.max(flux)
-    ylim0tg, ylim1tg = 0.95*np.min(Tg_per_month), 1.05*np.max(Tg_per_month)
+    ylim0, ylim1=0.925*np.min(flux), 1.075*np.max(flux)
+    ylim0tg, ylim1tg = 0.925*np.min(Tg_per_month), 1.075*np.max(Tg_per_month)
     
     # Plot the flux and the factors which are used to calculate it
     plt.clf()
@@ -447,34 +605,35 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png'):
     plt.sca(axes[1])
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     plt.title("Ozone flux from STTs")
-    plt.ylabel('Ozone flux [molec cm$^{-2}$]')
+    plt.ylabel('Ozone flux [molecules cm$^{-2}$ month$^{-1}$]')
     plt.ylim([ylim0, ylim1])
     rax=plt.twinx()
     rax.set_ylim([ylim0tg,ylim1tg])
-    rax.set_ylabel('[Tg]')
+    rax.set_ylabel('[Tg month$^{-1}$]')
     # chuck formula onto plot
-    plt.text(0.6,0.8,r'$\Delta \Omega_{O_3} = \Omega_{SO_{O_3}} * f * I$', fontsize=28, transform = rax.transAxes)
+    plt.text(0.525,0.895,r'$\Delta \Omega_{trop O_3} = \Omega_{trop O_3} * I * L * M$', fontsize=28, transform = rax.transAxes)
     
     ax=axes[0]
     plt.sca(ax)
-    l1=plt.plot(X, GCTropO3, 'k', linewidth=2, label="$\Omega_{GC_{O_3}}$")
+    l1=plt.plot(X, GCTropO3, 'k', linewidth=2, label="$\Omega_{trop O_3}$")
     #plt.title("Tropospheric ozone VCs in sub region (GEOS-Chem)")
     plt.xlim([-0.5, 11.5])
     plt.xlabel('Month')
     plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.ylabel('Ozone [molec cm$^{-2}$]')
+    plt.ylabel('Ozone [molecules cm$^{-2}$]')
     
     # plot percentages
     newax=plt.twinx()
     # likelihood pct * pct contribution
-    l2=newax.plot(X,I*100*3, color='teal', label='I*3')
-    l3=newax.plot(X,f*100, color='magenta', label='f')
+    l2=newax.plot(X,I*4, color='teal', label='I*4')
+    l3=newax.plot(X,L, color='magenta', label='L')
+    l4=newax.plot(X,M/10.0, color='brown', label='M/10')
     
     # axes and legends
     #newax.legend(loc=1)
-    newax.set_ylabel('percent')
-    newax.set_ylim([0,35])
-    lns=l1+l2+l3
+    newax.set_ylabel('factors')
+    newax.set_ylim([0,0.45])
+    lns=l1+l2+l3+l4
     plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
     sreg="[%dN, %dE, %dN, %dE]"%(Region[0],Region[1],Region[2],Region[3])
     plt.suptitle('Tropospheric ozone due to STT over %s'%sreg,fontsize=26)
@@ -484,133 +643,43 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png'):
     print("Created image at "+pltname)    
     plt.close(fig)
     
-    # calculate monthly flux in kg/km2/s (to compare with skerlak2014)
+    # calculate monthly flux in kg/km2/month (to compare with skerlak2014)
     # flux : [molecules O3/ cm2 / month]
-    # x [mol/molecule * g/mol * cm2/km2 * month/s]
-    dayspermonth=np.array([31,28.25,31,30,31,30,31,31,30,31,30,31])
-    secondsperday= 24*60*60
-    secondspermonth=dayspermonth * secondsperday
-    flux2 = flux * 1e10 # molecules / km2 / month
-    flux2 = flux2 * (1.0/secondspermonth) # molecules / km2 / s
-    # THIS CALCULATION IS NOT REALLY APPLICABLE AS MY /month dimension is FALSE
-    flux2 = flux2 * g_per_mol * (1/N_A) # g / km2 / s
-    f=plt.figure(figsize=[8,5])
-    plt.plot(X, flux2)
-    plt.xlim([-0.5, 11.5])
-    plt.xlabel('Month')
-    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.ylabel('flux [g km$^{-2}$ s$^{-1}$]')
-    plt.title("Monthly flux over %s"%sreg)
-    plt.savefig("images/STT_extrap_temp.png")
+    #         x  * cm2/km2 * g/mol * kg/g * mol/molecule]
+    flux2 = flux * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
+    print ("seasonal [kg/km2/month]: ")
+    seasons=(np.sum(flux2[[-1,0,1]])/3.0, np.sum(flux2[[2,3,4]])/3.0,
+               np.sum(flux2[[5,6,7]])/3.0, np.sum(flux2[[8,9,10]])/3.0)
+    print("Summer(DJF) = %5.3f, Autumn(MAM) = %5.3f, Winter(JJA) = %5.3f, Sprint(SON) = %5.3f"%seasons)
+    print(" all months [kg/km2/month]:")
+    print (flux2)
+    #    f=plt.figure(figsize=[8,5])
+    #    plt.plot(X, flux2)
+    #    plt.xlim([-0.5, 11.5])
+    #    plt.xlabel('Month')
+    #    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
+    #    plt.ylabel('flux [kg km$^{-2}$ month$^{-1}$]')
+    #    plt.title("Monthly flux over %s"%sreg)
+    #    plt.savefig("images/STT_extrap_temp.png")
+    
     # TODO: abs/relative uncertainties from standard deviations and add these units/uncertainties to prior plot
 
 def SO_extrapolation(north=-35,south=-75):
     '''
     Rough estimate of flux over southern ocean
+    A wrapper for STT_extrapolation
     '''
-    # Read sondes data
-    sonde_files=[fio.read_sonde(s) for s in range(2)]
-    # monthly likelihood = occurrences/sondecount each month, for davis and macquarie
-    n_s=len(sonde_files)
-    likelihood=np.zeros([12,n_s])
-    # monthly flux percentage
-    fluxpct=np.zeros([12,n_s])
+    region=[south,-179.9,north,179.9] #Region: [S ,W ,N ,E]
+    return STT_extrapolation(region)
     
-    # for davis and macquarie:
-    for i, os in enumerate(sonde_files):
-        # indices of all events and all sondes within this month
-        allmonths=np.array([ d.month for d in os.dates ])
-        alleventsmonths=np.array([ d.month for d in os.edates ])
-        # for each month
-        fluxpc=np.array(os.eflux)/np.array(os.etropvc)
-        for month in range(12):
-            inds=np.where(allmonths == month+1)[0]
-            einds=np.where(alleventsmonths == month+1)[0]
-            likelihood[month,i] = len(einds)/ float(len(inds))
-            # Flux pct per month
-            if len(einds) != 0:
-                fluxpct[month,i] = np.mean(fluxpc[einds])
-    
-    # model SO tropospheric O3 Column:
-    GCData=fio.read_GC_global()
-    SOTropO3=GCData.southernOceanTVC(north=north,south=south)
-    
-    # plot estimated flux on left hand axis
-    # plot likelihoods and flux pct on the right hand axis
-    I=np.mean(fluxpct, axis=1) # impact
-    f=np.mean(likelihood, axis=1) # frequency
-    flux = SOTropO3 * I * f
-    return I, f, flux, SOTropO3
 
 def plot_SO_extrapolation(north=-35,south=-75):
     '''
     plot estimate of Southern Oceanic STT flux
     '''
-    X=range(12)
-    I,f,flux, SOTropO3=SO_extrapolation(north=north,south=south)
-    terao08flux=(flux/I)*0.35
-    # conversion to Tg/yr:
-    gca=fio.get_GC_area()
-    so_area=gca.band_area(south,north) # m2
-    g_per_mol=48 # g/Mol
-    molecs=np.sum(flux) # molec/cm2/yr
-    terao08molecs=np.sum(terao08flux)
-    # [molec/cm2/time] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
-    Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # Tg/time
-    terao08tgpm=terao08flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 #
-    # print both values    
-    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
-    print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
-    
-    # check_Terao08_impact:
-    print("If we assume the proportion of ozone due to an event is actually 35\%, as in Terao08 for the northern hemisphere:")
-    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%terao08molecs)
-    print("(%5.3e Tg/yr)"%np.sum(terao08tgpm))
-    # set ylimits for plot
-    ylim0, ylim1=0.95*np.min(flux), 1.05*np.max(flux)
-    ylim0tg, ylim1tg = 0.95*np.min(Tg_per_month), 1.05*np.max(Tg_per_month)
-    
-    # Plot the flux and the factors which are used to calculate it
-    plt.clf()
-    fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
-    plt.sca(axes[1])
-    plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
-    plt.title("Ozone flux from STTs")
-    plt.ylabel('Ozone flux [molec cm$^{-2}$]')
-    plt.ylim([ylim0, ylim1])
-    rax=plt.twinx()
-    rax.set_ylim([ylim0tg,ylim1tg])
-    rax.set_ylabel('[Tg]')
-    # chuck formula onto plot
-    plt.text(0.6,0.8,r'$\Delta \Omega_{O_3} = \Omega_{SO_{O_3}} * f * I$', fontsize=28, transform = rax.transAxes)
-    
-    ax=axes[0]
-    plt.sca(ax)
-    l1=plt.plot(X, SOTropO3, 'k', linewidth=2, label="$\Omega_{SO_{O_3}}$")
-    #plt.title("Tropospheric ozone VCs in SO (GEOS-Chem)")
-    plt.xlim([-0.5, 11.5])
-    plt.xlabel('Month')
-    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    plt.ylabel('Ozone [molec cm$^{-2}$]')
-    
-    # plot percentages
-    newax=plt.twinx()
-    # likelihood pct * pct contribution
-    l2=newax.plot(X,I*100*3, color='teal', label='I*3')
-    l3=newax.plot(X,f*100, color='magenta', label='f')
-    
-    # axes and legends
-    #newax.legend(loc=1)
-    newax.set_ylabel('percent')
-    newax.set_ylim([0,35])
-    lns=l1+l2+l3
-    plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
-    plt.suptitle('Tropospheric ozone due to STT over the Southern Ocean',fontsize=26)
-    
-    # save image
+    region=[south,-179.9,north,179.9] #Region: [S ,W ,N ,E]
     pltname='images/SO_extrapolation.png'
-    plt.savefig(pltname)
-    print("Created image at "+pltname)    
+    plot_extrapolation(region,pltname=pltname)
 
 def check_extrapolation():
     '''
@@ -1516,25 +1585,25 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
-    brief_summary()
-    summary_plots()
+    #brief_summary()
+    #summary_plots()
     #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
-    #plot_SO_extrapolation()
+    plot_SO_extrapolation()
     # N W S E regions:
     Region1=[-60, 140, -35, 165] # region for Melb and Macca
     Region2=[-70, 60, -55, 90] # region for Davis
-    #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
-    #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
+    plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
+    plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
     #seasonal_tropozone() # plot seasonaltropozone.png
     #check_GC_output()
-    [event_profiles(s,legend = (s==1)) for s in [0,1,2]]
-    time_series()
-    seasonal_profiles(hour=0,degradesondes=False)
-    monthly_profiles(hour=0,degradesondes=False)
+    #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
+    #time_series()
+    #seasonal_profiles(hour=0,degradesondes=False)
+    #monthly_profiles(hour=0,degradesondes=False)
     #anomaly_correlation()
     #correlation()
     #yearly_cycle()
