@@ -502,9 +502,10 @@ def STT_extrapolation_bracketed(Region):
     '''
     ILMT, flux, flux_range = STT_extrapolation(Region)
     ILT = ILMT[[0,1,3],:]
-    flux = 17.0 * np.nanprod(ILT,axis=0)
-    flux_range[0,:] = 4.0 * flux
-    flux_range[1,:] = 30.0 * flux
+    prod=np.nanprod(ILT,axis=0)
+    flux = 17.0 * prod
+    flux_range[0,:] = 4.0 * prod
+    flux_range[1,:] = 30.0 * prod
     
     return ILT, flux, flux_range
 
@@ -516,7 +517,7 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed
     
     X=range(12)
     if Bracketed:
-        ILMT, flux, flux_range = STT_extrapolation(Region)
+        ILMT, flux, flux_range = STT_extrapolation_bracketed(Region)
         M=np.repeat(17.0,repeats=12)
         GCTropO3=ILMT[2,:]
     else:
@@ -1549,8 +1550,8 @@ if __name__ == "__main__":
     # N W S E regions:
     Region1=[-60, 140, -35, 165] # region for Melb and Macca
     Region2=[-70, 60, -55, 90] # region for Davis
-    plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
-    plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
+    #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
+    #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
     plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac_B.png',Bracketed=True)
     plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav_B.png',Bracketed=True)
     #check_weird_tp(2006)# look at profile of low tp sondes
