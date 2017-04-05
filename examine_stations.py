@@ -409,6 +409,8 @@ def STT_extrapolation(Region):
     # monthly (I)mpact (event O3 / trop O3):
     # Events per measurement or (L)ikelihood:
     # (M)easurements per month
+    # (T)ropO3
+    ILMT = np.zeros([4,12,n_s])
     
     # Std_deviation of each factor
     ILMT_stdev=np.zeros([4,12,n_s]) 
@@ -424,162 +426,106 @@ def STT_extrapolation(Region):
         # How many of each month do the measurements span?
         n_months_check = np.array([len(set([date.year for date in os.dates if date.month == month])) for month in np.arange(1,12.1)])
         
-        ILMT=np.ndarray([4,12,n_years]) +np.NaN# factors for each month each year
+        ILMTi=np.ndarray([4,12,n_years]) +np.NaN# factors for each month each year
         
         # for each year
         for yi,year in enumerate(set(allyears)):
             # for each month
             for mi in range(12):
                 inds=(allmonths == mi+1) * (allyears == year)
+                n_m=np.sum(inds) # number of measurements
                 einds=(alleventsmonths == mi+1) * (alleventsyears == year)
-                if np.sum(inds)==0: 
+                n_e=np.sum(einds) # number of event detections
+                if n_m==0: 
                     if __DEBUG__: 
                         print("%s has no measurements on %d-%d"%(os.name,year,mi+1))
                     continue # no measuremets this month & year
-                ILMT[2,mi,yi] = np.sum(inds) # count of this months measurements
-                ILMT[0,mi,yi] = 0.0 # Impact
-                ILMT[1,mi,yi] = 0.0 # Likelihood
-                if np.sum(einds) != 0:
-                    ILMT[0,mi,yi] = np.mean(np.array(os.eflux)[einds]/np.array(os.etropvc)[einds]) # Impact
-                    ILMT[1,mi,yi] = len(einds)/ float(len(inds)) # Likelihood of event per measurement
-            ILMT[3,:,yi]=TropO3
-            
-            # Divide monthly measurements by how many of each month there are
-            ILMT[2,:,yi]=ILMT[2,:,yi]/n_months_check.astype(float)
+                ILMTi[2,mi,yi] = n_m # count of this months measurements
+                ILMTi[0,mi,yi] = 0.0 # Impact
+                ILMTi[1,mi,yi] = 0.0 # Likelihood
+                if n_e != 0:
+                    ILMTi[0,mi,yi] = np.mean(np.array(os.eflux)[einds]/np.array(os.etropvc)[einds]) # Impact
+                    ILMTi[1,mi,yi] = n_e / float(n_m) # Likelihood of event per measurement
+            ILMTi[3,:,yi]=TropO3
+        # end of year loop
+        
+        # take multiyear monthly average
+        ILMT[:,:,ii]=np.nanmean(ILMTi,axis=2) 
         
         # get the stdev
-        ILMT_stdev[:,:,ii]=np.nanstd(ILMT,axis=2)
+        ILMT_stdev[:,:,ii]=np.nanstd(ILMTi,axis=2)
         ILMT_stdev[3,:,ii]=TropO3_stdev
-        
         
         if __DEBUG__:
             print("%s spans this many of each month:"%(os.name))
             print(n_months_check)
-        
-        ILMT=np.nanmean(ILMT,axis=2) # take multiyear monthly average
-        
-        if __DEBUG__:
             print("With this many measurements per month:")
             print(ILMT[2,:,ii])
+            print("With these likelihoods of event detection:")
+            print(ILMT[1,:,ii])
+    # end of sites loop
     
     ## Now we take the average between the sites
     #
+    ILMT=np.mean(ILMT, axis=2) # Average between sondes
+    flux = np.nanprod(ILMT,axis=0)
     
     # uncertainty reduced by root of independent measurement count
     # assume each sonde site is independent
     ILMT_stdev=np.nanmean(ILMT_stdev,axis=2) / np.sqrt(n_s) 
+    
     # proportional uncertainty
-    uncertainty= ILMT_stdev * 100.0 / ILMT
+    uncertainty = ILMT_stdev / ILMT # [4,12]
+    flux_uncertainty = np.nansum(uncertainty,axis=0) # sum of factor proportional uncertainties
+    flux_range = np.zeros([2,12])
+    flux_range[0,:] = flux * (1-flux_uncertainty)
+    flux_range[1,:] = flux * (1+flux_uncertainty)
     
-    ILMT=np.mean(ILMT, axis=2) # Average between sondes
+    if __DEBUG__: 
+        print("ILMT_stdev %s:"%str(ILMT_stdev.shape))
+        print (ILMT_stdev)
+        print("flux uncertainty:")
+        print (flux_uncertainty)
+        print("flux_range:")
+        for jj in range(12):
+            print("%d: %.2e"%(jj+1,flux_range[1,jj]-flux_range[0,jj]))
     
-    flux = np.nanprod(ILMT,axis=0)
-    return ILMT, flux, uncertainty
+    return ILMT, flux, flux_range
 
-def STT_extrapolation_noSTD(Region):
+def STT_extrapolation_bracketed(Region):
     '''
     Estimate STT flux in a particular region
     Region: [S ,W ,N ,E]
-    Returns: I, L, M, TropO3, Flux
-        I, L, M are mean measured monthly (I)mpact, (L)ikelihood, and (M)easurement count
-        TropO3 is GEOS-Chem tropospheric ozone column, Flux is these 4 factors multiplied,
-        std_dev_ILMT is std deviation of each factor
+    Using ILMT from STT_extrapolation function, replacing M with a range 
+        from 4-30 to give us an STT flux bracket
+    Returns: ILT, flux, flux_range
     '''
-    # Read sondes data
-    all_sonde_files=[fio.read_sonde(s) for s in range(3)]
+    ILMT, flux, flux_range = STT_extrapolation(Region)
+    ILT = ILMT[[0,1,3],:]
+    flux = 17.0 * np.nanprod(ILT,axis=0)
+    flux_range[0,:] = 4.0 * flux
+    flux_range[1,:] = 30.0 * flux
     
-    # we only use sondes within extrapolation region...
-    def in_region(lat,lon):
-        return ((lat<Region[2])*(lat>Region[0])*(lon>Region[1])*(lon<Region[3]))
-    sonde_files = [sf for sf in all_sonde_files if in_region(sf.lat,sf.lon)]
-    if __DEBUG__:
-        print("STT_Extrapolation")
-        print(Region)
-        print("Contains sites:")
-        print([s.name for s in sonde_files])
-    
-    # How many sondes have we:
-    n_s=len(sonde_files)
+    return ILT, flux, flux_range
 
-    # monthly (I)mpact (event O3 / trop O3):
-    I=np.zeros([12,n_s])    
-    # Events per measurement or (L)ikelihood:
-    L=np.zeros([12,n_s])
-    # (M)easurements per month
-    M=np.zeros([12,n_s])
-    # how many of each month does each site have measurements for:
-    n_months=np.zeros([12,n_s])
-    n_months2=np.zeros([12,n_s])
-    
-    # Std_deviation of each factor
-    std_dev_ILMT=np.zeros([4,12,n_s]) 
-    
-    # for each site:
-    for ii, os in enumerate(sonde_files):
-        # indices of all events and all sondes within this month
-        allyears=np.array([ d.year for d in os.dates ])
-        allmonths=np.array([ d.month for d in os.dates ])
-        alleventsmonths=np.array([ d.month for d in os.edates ])
-        
-        n_releases=[[] for jj in range(12)]
-        # for each year
-        for year in set(allyears):
-            # add month counts
-            for month in range(12)+1:
-                inds= (allyears==year) * (allmonths==month)
-                if np.sum(inds)==0: continue
-                n_releases[month-1].append(np.sum(inds))
-        std_dev_ILMT[2,:,ii] = np.array([np.std(n_releases[jj]) for jj in range(12)])
-        
-        n_months[:,ii] = [len(n_releases[jj]) for jj in range(12)]
-        # this works but we want the std. deviation...
-        n_months2[:,ii] = [len(set([date.year for date in os.dates if date.month == month])) for month in np.arange(1,12.1)]
-        
-        if __DEBUG__:
-            assert n_months[:,ii] == n_months2[:, ii], (n_months[:,ii],n_months2[:,ii])
-            print("%s has this many of each month:"%(os.name))
-            print(n_months[:,ii])
-        
-        # for each month
-        I_month=np.array(os.eflux)/np.array(os.etropvc)
-        for month in range(12):
-            inds=np.where(allmonths == month+1)[0]
-            einds=np.where(alleventsmonths == month+1)[0]
-            # Likelihood of event per measurement
-            L[month,ii] = len(einds)/ float(len(inds))
-            std_dev_ILMT[1,month,ii] = np.std()
-            # Measurements per month:
-            M[month,ii] = len(inds)/float(n_months[month,ii])
-            # Flux pct per month
-            if len(einds) != 0:
-                I[month,ii] = np.mean(I_month[einds])
-        if __DEBUG__:
-            print("And this many measurements per month:")
-            print(M[:,ii])
-        
-    # model SO tropospheric O3 Column:
-    GCData=fio.read_GC_global()
-    TropO3=GCData.averagedTVC(Region)
-    
-    # plot estimated flux on left hand axis
-    # plot likelihoods and flux pct on the right hand axis
-    mean_I=np.mean(I, axis=1) # impact proportion
-    mean_L=np.mean(L, axis=1) # events per sonde
-    mean_M=np.mean(M, axis=1) # sondes per month
-    flux = TropO3 * mean_I * mean_L * mean_M
-    return mean_I, mean_L, mean_M, flux, TropO3
-
-def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', measurementbracket=False):
+def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed=False):
     '''
     Plot estimate of STT flux in some particular region
     Region: [S ,W ,N ,E]
     '''
+    
     X=range(12)
-    ILMT, flux, uncertainty = STT_extrapolation(Region)
+    if Bracketed:
+        ILMT, flux, flux_range = STT_extrapolation(Region)
+        M=np.repeat(17.0,repeats=12)
+        GCTropO3=ILMT[2,:]
+    else:
+        ILMT, flux, flux_range = STT_extrapolation(Region)
+        M=ILMT[2,:]
+        GCTropO3=ILMT[3,:]
     I=ILMT[0,:]
-    L=ILMT[0,:]
-    M=ILMT[0,:]
-    GCTropO3=ILMT[0,:]
+    L=ILMT[1,:]
+    flux_error=flux_range[0,:]-flux
     
     # conversion to Tg/yr:
     gca=fio.get_GC_area()
@@ -596,23 +542,33 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', measureme
     print("This occurs over %5.3e km2"%(so_area/1e6))
     
     # set ylimits for plot
-    ylim0, ylim1=0.925*np.min(flux), 1.075*np.max(flux)
+    ylim0, ylim1=0.925*np.min(flux_range), 1.075*np.max(flux_range)
     ylim0tg, ylim1tg = 0.925*np.min(Tg_per_month), 1.075*np.max(Tg_per_month)
     
     # Plot the flux and the factors which are used to calculate it
+    # set up plot and axes
     plt.clf()
     fig, axes=plt.subplots(nrows=2,ncols=1,sharex=True,figsize=(14,13))
     plt.sca(axes[1])
+    
+    # plot the flux line:
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
+    # plot errorbars
+    #plt.errorbar(X, flux, yerr=flux_error, linestyle="None", marker="None", color="k")
+    plt.fill_between(X, flux_range[0,:], flux_range[1,:], color='grey', alpha='0.5')
+    
+    # plot limits, title, and labels
     plt.title("Ozone flux from STTs")
     plt.ylabel('Ozone flux [molecules cm$^{-2}$ month$^{-1}$]')
     plt.ylim([ylim0, ylim1])
+    # second plot axes for other dimension
     rax=plt.twinx()
     rax.set_ylim([ylim0tg,ylim1tg])
-    rax.set_ylabel('[Tg month$^{-1}$]')
+    rax.set_ylabel('[Tg month$^{-1}$]')    
     # chuck formula onto plot
     plt.text(0.525,0.895,r'$\Delta \Omega_{trop O_3} = \Omega_{trop O_3} * I * L * M$', fontsize=28, transform = rax.transAxes)
     
+    # plot factors on seperate subplot
     ax=axes[0]
     plt.sca(ax)
     l1=plt.plot(X, GCTropO3, 'k', linewidth=2, label="$\Omega_{trop O_3}$")
@@ -627,13 +583,13 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', measureme
     # likelihood pct * pct contribution
     l2=newax.plot(X,I*4, color='teal', label='I*4')
     l3=newax.plot(X,L, color='magenta', label='L')
-    l4=newax.plot(X,M/10.0, color='brown', label='M/10')
+    # l4=newax.plot(X,M/20.0, color='brown', label='M/20')
     
     # axes and legends
     #newax.legend(loc=1)
     newax.set_ylabel('factors')
     newax.set_ylim([0,0.45])
-    lns=l1+l2+l3+l4
+    lns=l1+l2+l3#+l4
     plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
     sreg="[%dN, %dE, %dN, %dE]"%(Region[0],Region[1],Region[2],Region[3])
     plt.suptitle('Tropospheric ozone due to STT over %s'%sreg,fontsize=26)
@@ -662,7 +618,6 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', measureme
     #    plt.title("Monthly flux over %s"%sreg)
     #    plt.savefig("images/STT_extrap_temp.png")
     
-    # TODO: abs/relative uncertainties from standard deviations and add these units/uncertainties to prior plot
 
 def SO_extrapolation(north=-35,south=-75):
     '''
@@ -1590,12 +1545,14 @@ if __name__ == "__main__":
     #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
-    plot_SO_extrapolation()
+    #plot_SO_extrapolation()
     # N W S E regions:
     Region1=[-60, 140, -35, 165] # region for Melb and Macca
     Region2=[-70, 60, -55, 90] # region for Davis
     plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
     plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
+    plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac_B.png',Bracketed=True)
+    plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav_B.png',Bracketed=True)
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
     #seasonal_tropozone() # plot seasonaltropozone.png
