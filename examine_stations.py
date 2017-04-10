@@ -29,7 +29,7 @@ from JesseRegression import RMA
 
 # GLOBALS:
 #
-__DEBUG__=True
+__DEBUG__=False
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
@@ -378,11 +378,11 @@ def STT_extrapolation(Region):
     '''
     Estimate STT flux in a particular region
     Region: [S ,W ,N ,E]
-    Returns: return ILMT, flux, uncertainty
+    Returns: ILMT, flux, flux_range, ILMT_stdev
         ILMT= numpy array(4,12),
         flux=product on axis 0,
-        uncertainty is proportional for ILMT (simply add for product uncertainty)
-        
+        flux_range is 2x12 lower to upper stddev for flux
+        ILMT_stdev is 4x12 std deviations for each month in the multi year dataset
         I, L, M are mean measured monthly (I)mpact, (L)ikelihood, and (M)easurement count
         T is GEOS-Chem tropospheric ozone column, Flux is these 4 factors multiplied
     '''
@@ -413,7 +413,14 @@ def STT_extrapolation(Region):
     ILMT = np.zeros([4,12,n_s])
     
     # Std_deviation of each factor
-    ILMT_stdev=np.zeros([4,12,n_s]) 
+    ILMT_stdev=np.zeros([4,12,n_s])
+    counts = np.zeros([12,n_s])
+    
+    # seasonal calculations
+    ILMT_s = np.zeros([4,4,n_s])
+    ILMT_stdev_s=np.zeros([4,4,n_s])
+    counts_s = np.zeros([4,n_s])
+    seasons=[[-1,0,1],[2,3,4],[5,6,7],[8,9,10]]
     
     # for each site:
     for ii, os in enumerate(sonde_files):
@@ -436,12 +443,13 @@ def STT_extrapolation(Region):
                 n_m=np.sum(inds) # number of measurements
                 einds=(alleventsmonths == mi+1) * (alleventsyears == year)
                 n_e=np.sum(einds) # number of event detections
+                counts[mi,ii]=counts[mi,ii]+n_e
                 if n_m==0: 
                     if __DEBUG__: 
                         print("%s has no measurements on %d-%d"%(os.name,year,mi+1))
                     continue # no measuremets this month & year
                 ILMTi[2,mi,yi] = n_m # count of this months measurements
-                ILMTi[0,mi,yi] = 0.0 # Impact
+                ILMTi[0,mi,yi] = np.NaN # Impact
                 ILMTi[1,mi,yi] = 0.0 # Likelihood
                 if n_e != 0:
                     ILMTi[0,mi,yi] = np.mean(np.array(os.eflux)[einds]/np.array(os.etropvc)[einds]) # Impact
@@ -451,10 +459,18 @@ def STT_extrapolation(Region):
         
         # take multiyear monthly average
         ILMT[:,:,ii]=np.nanmean(ILMTi,axis=2) 
-        
         # get the stdev
         ILMT_stdev[:,:,ii]=np.nanstd(ILMTi,axis=2)
         ILMT_stdev[3,:,ii]=TropO3_stdev
+        # When just one measurement used, set stdev to 100%
+        ILMT_stdev[ILMT_stdev==0]=ILMT[ILMT_stdev==0] 
+        
+        # seasonal averages:
+        for kk in range(4):
+            for ll in range(4):
+                ILMT_s[ll,kk,ii] = np.nanmean(ILMTi[ll,seasons[kk],:])
+                ILMT_stdev_s[ll,kk,ii] = np.nanstd(ILMTi[ll,seasons[kk],:])
+            counts_s[kk,ii] = np.sum(counts[seasons[kk],ii])
         
         if __DEBUG__:
             print("%s spans this many of each month:"%(os.name))
@@ -468,14 +484,20 @@ def STT_extrapolation(Region):
     ## Now we take the average between the sites
     #
     ILMT=np.mean(ILMT, axis=2) # Average between sondes
+    ILMT_s=np.mean(ILMT_s, axis=2)
+    
     flux = np.nanprod(ILMT,axis=0)
+    flux_s = np.nanprod(ILMT_s, axis=0) # molecules/month
     
     # uncertainty reduced by root of independent measurement count
     # assume each sonde site is independent
     ILMT_stdev=np.nanmean(ILMT_stdev,axis=2) / np.sqrt(n_s) 
+    ILMT_stdev_s=np.nanmean(ILMT_stdev_s,axis=2) / np.sqrt(n_s) 
     
     # proportional uncertainty
     uncertainty = ILMT_stdev / ILMT # [4,12]
+    uncertainty_s = ILMT_stdev_s / ILMT_s # [4, 4]
+    
     flux_uncertainty = np.nansum(uncertainty,axis=0) # sum of factor proportional uncertainties
     flux_range = np.zeros([2,12])
     flux_range[0,:] = flux * (1-flux_uncertainty)
@@ -490,24 +512,44 @@ def STT_extrapolation(Region):
         for jj in range(12):
             print("%d: %.2e"%(jj+1,flux_range[1,jj]-flux_range[0,jj]))
     
-    return ILMT, flux, flux_range
+    return {"ILMT":ILMT, "flux":flux, "flux_range":flux_range, 
+            "ILMT_stdev":ILMT_stdev, "ILMT_s":ILMT_s, 
+            "ILMT_stdev_s":ILMT_stdev_s,"flux_s":flux_s}
 
-def STT_extrapolation_bracketed(Region):
+def STT_extrapolation_bracketed(Region, event_lifetime=2.5):
     '''
     Estimate STT flux in a particular region
     Region: [S ,W ,N ,E]
     Using ILMT from STT_extrapolation function, replacing M with a range 
         from 4-30 to give us an STT flux bracket
-    Returns: ILT, flux, flux_range
+    Returns: ILMT, flux, flux_range, ILMT_stdev
     '''
-    ILMT, flux, flux_range = STT_extrapolation(Region)
-    ILT = ILMT[[0,1,3],:]
-    prod=np.nanprod(ILT,axis=0)
-    flux = 17.0 * prod
+    extrap = STT_extrapolation(Region)
+    ILMT=extrap["ILMT"]
+    ILMT_s=extrap["ILMT_s"]
+    flux=extrap["flux"]
+    flux_s=extrap["flux_s"]
+    flux_range=extrap["flux_range"]
+    ILMT_stdev=extrap["ILMT_stdev"]
+    ILMT_stdev_s=extrap["ILMT_stdev_s"]
+    
+    # Reset M parameter using assumed event lifetime
+    M=30.0/float(event_lifetime)
+    ILMT[2,:] = M
+    ILMT_s[2,:] = M
+    ILMT_stdev[2,:] = 0.1*M # assume 10% error
+    ILMT_stdev_s[2,:] = 0.1*M 
+    
+    # recalculate flux with new parameter
+    flux[...] = np.nanprod(ILMT,axis=0)
+    flux_s[...] = np.nanprod(ILMT_s,axis=0)
+
+    # Set up bracketed range based on event lifetime of 1 day to 0.25 months
+    prod=np.nanprod(ILMT[[0,1,3],:],axis=0)
     flux_range[0,:] = 4.0 * prod
     flux_range[1,:] = 30.0 * prod
     
-    return ILT, flux, flux_range
+    return extrap
 
 def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed=False):
     '''
@@ -515,18 +557,19 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed
     Region: [S ,W ,N ,E]
     '''
     
-    X=range(12)
-    if Bracketed:
-        ILMT, flux, flux_range = STT_extrapolation_bracketed(Region)
-        M=np.repeat(17.0,repeats=12)
-        GCTropO3=ILMT[2,:]
-    else:
-        ILMT, flux, flux_range = STT_extrapolation(Region)
-        M=ILMT[2,:]
-        GCTropO3=ILMT[3,:]
+    extrap_fn=[STT_extrapolation,STT_extrapolation_bracketed][Bracketed]
+    extrap = extrap_fn(Region)
+    ILMT=extrap["ILMT"]
+    ILMT_s=extrap["ILMT_s"]
+    flux=extrap["flux"]
+    flux_s=extrap["flux_s"]
+    flux_range=extrap["flux_range"]
+    ILMT_stdev=extrap["ILMT_stdev"]
+    ILMT_stdev_s=extrap["ILMT_stdev_s"] 
+    
     I=ILMT[0,:]
     L=ILMT[1,:]
-    flux_error=flux_range[0,:]-flux
+    GCTropO3=ILMT[3,:]
     
     # conversion to Tg/yr:
     gca=fio.get_GC_area()
@@ -534,13 +577,8 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed
     g_per_mol=48 # g/Mol
     molecs=np.sum(flux) # molec/cm2/yr
     
-    # [molec/cm2/time] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
-    Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # Tg/time
-    
-    # print both values
-    print("%5.3e molecules/cm2/yr STT ozone contribution to the southern high latitudes"%molecs)
-    print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
-    print("This occurs over %5.3e km2"%(so_area/1e6))
+    # [molec/cm2/month] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
+    Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # = Tg/month
     
     # set ylimits for plot
     ylim0, ylim1=0.925*np.min(flux_range), 1.075*np.max(flux_range)
@@ -553,6 +591,7 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed
     plt.sca(axes[1])
     
     # plot the flux line:
+    X=range(12)
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     # plot errorbars
     #plt.errorbar(X, flux, yerr=flux_error, linestyle="None", marker="None", color="k")
@@ -599,25 +638,34 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', Bracketed
     plt.savefig(pltname)
     print("Created image at "+pltname)    
     plt.close(fig)
+
+    ## Print Seasons
+    
+    # print both values
+    print("%5.3e molecules/cm2/yr STT ozone contribution "%molecs)
+    print("(%5.3e Tg/yr)"%np.sum(Tg_per_month))
+    print("This occurs over %5.3e km2"%(so_area/1e6))
     
     # calculate monthly flux in kg/km2/month (to compare with skerlak2014)
     # flux : [molecules O3/ cm2 / month]
     #         x  * cm2/km2 * g/mol * kg/g * mol/molecule]
-    flux2 = flux * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
+    flux_kg = flux * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
+    fks = flux_s * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
+    fus=np.sum(ILMT_stdev_s/ILMT_s * 100.0,axis=0) # sum along the parameters
     print ("seasonal [kg/km2/month]: ")
-    seasons=(np.sum(flux2[[-1,0,1]])/3.0, np.sum(flux2[[2,3,4]])/3.0,
-               np.sum(flux2[[5,6,7]])/3.0, np.sum(flux2[[8,9,10]])/3.0)
-    print("Summer(DJF) = %5.3f, Autumn(MAM) = %5.3f, Winter(JJA) = %5.3f, Sprint(SON) = %5.3f"%seasons)
-    print(" all months [kg/km2/month]:")
-    print (flux2)
-    #    f=plt.figure(figsize=[8,5])
-    #    plt.plot(X, flux2)
-    #    plt.xlim([-0.5, 11.5])
-    #    plt.xlabel('Month')
-    #    plt.xticks(X,['J','F','M','A','M','J','J','A','S','O','N','D'])
-    #    plt.ylabel('flux [kg km$^{-2}$ month$^{-1}$]')
-    #    plt.title("Monthly flux over %s"%sreg)
-    #    plt.savefig("images/STT_extrap_temp.png")
+    seasons2_s=(fks[0],fus[0],fks[1],fus[1],fks[2],fus[2],fks[3],fus[3])
+    seasons2=(np.sum(flux_kg[[-1,0,1]])/3.0, np.sum(flux_kg[[2,3,4]])/3.0,
+               np.sum(flux_kg[[5,6,7]])/3.0, np.sum(flux_kg[[8,9,10]])/3.0)
+    print("Summer(DJF) = %5.3f, Autumn(MAM) = %5.3f, Winter(JJA) = %5.3f, Sprint(SON) = %5.3f"%seasons2)
+    print("Summer(DJF) = %5.3f(%5.1f%%), Autumn(MAM) = %5.3f(%5.1f%%), Winter(JJA) = %5.3f(%5.1f%%), Sprint(SON) = %5.3f(%5.1f%%)"%seasons2_s)
+    print("monthly uncertainty:")
+    flux_uncertainty=ILMT_stdev/ILMT*100.0
+    tot_unc=np.nansum(flux_uncertainty,axis=0)
+    for jj in range(12):
+        outset=(jj+1,flux_uncertainty[0,jj],flux_uncertainty[1,jj],
+                flux_uncertainty[2,jj],flux_uncertainty[3,jj],tot_unc[jj])
+        print("%d : I:%.2f%%, L:%.2f%%, M:%.2f%%, T:%.2f%%, TOTAL: %3.2f"%outset)
+    
     
 
 def SO_extrapolation(north=-35,south=-75):
@@ -1548,12 +1596,16 @@ if __name__ == "__main__":
     #check_extrapolation()
     #plot_SO_extrapolation()
     # N W S E regions:
-    Region1=[-60, 140, -35, 165] # region for Melb and Macca
-    Region2=[-70, 60, -55, 90] # region for Davis
+    #Region1=[-60, 140, -35, 165] # region for Melb and Macca
+    #Region2=[-70, 60, -55, 90] # region for Davis
     #plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac.png')
     #plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav.png')
-    plot_extrapolation(Region1,pltname='images/STT_extrapolation_MelbMac_B.png',Bracketed=True)
-    plot_extrapolation(Region2,pltname='images/STT_extrapolation_Dav_B.png',Bracketed=True)
+    Reg_Melb=[-48,135,-28,155]
+    Reg_Mac=[-65,149,-45, 169]
+    Reg_Dav=[-79,68,-59,88]
+    plot_extrapolation(Reg_Melb,pltname='images/STT_extrapolation_Melb_B.png',Bracketed=True)
+    plot_extrapolation(Reg_Mac,pltname='images/STT_extrapolation_Mac_B.png',Bracketed=True)
+    plot_extrapolation(Reg_Dav,pltname='images/STT_extrapolation_Dav_B.png',Bracketed=True)
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
     #seasonal_tropozone() # plot seasonaltropozone.png
