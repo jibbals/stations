@@ -9,7 +9,7 @@ Me das tu numero?
 """
 
 import numpy as np
-#from datetime import datetime, timedelta
+from datetime import datetime#, timedelta
 from tau_to_date import tau_to_date as ttd
 
 ##################################################################
@@ -105,6 +105,35 @@ class GChem:
         if label is not None:
             cb.set_label(label)
         return m,cb
+    
+    def averagedTVC_monthly(self, Region):
+        '''
+        Average tropospheric vertical column for Region
+        Region: [S ,W ,N ,E]        
+        Returns: data, date, std
+        Return units: molecules/cm2
+        Return dimension: X months of data
+        '''
+        allmonths= np.array([ d.month for d in self.dates ])
+        allyears= np.array([d.year for d in self.dates])
+        data=[]
+        std=[]
+        date=[]
+        south,west,north,east=Region
+        assert north > south, "North needs to be greater than south"
+        assert east > west, "East needs to be greater than west"
+        
+        loninds=np.where( (east > self.lons) * (self.lons > west) )[0]
+        latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
+        TVC=self.O3tropVC[:, latinds, :]
+        TVC=TVC[:, :, loninds]
+        for year in set(allyears):
+            for month in range(12):
+                inds= (allmonths == month+1) * (allyears==year)
+                data.append(np.mean(TVC[inds,:,:]))
+                std.append(np.std(TVC[inds,:,:]))
+                date.append(datetime(year,month+1,1))
+        return data, date, std
     
     def averagedTVC(self, Region):
         '''
