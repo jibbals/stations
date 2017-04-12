@@ -33,7 +33,7 @@ class sondes:
         self.edates= [] # event dates
         self.edatedeltas= [] # sonde datetime - event datetime
         self.edepth= [] # sonde depth in km, ported from IDL
-        self.eflux = [] # EVENT FLUX FROM GEOS-CHEM IN MOLECULES/CM2
+        self.eflux = [] # EVENT FLUX FROM IDL IN MOLECULES/CM2
         self.einds = [] # event indices
         self.epeak = [] # event peak altitudes (km)
         self.etype = [] # event is either from a cutoff low, a front, or something else
@@ -286,6 +286,52 @@ class sondes:
             
     
         return(ndat)
+    
+    def get_flux_params(self, verbose=False):
+        ''' Find I and P and the std_deviations '''
+        
+        # Used to get indices from certain month or year:
+        allyears=np.array([ d.year for d in self.dates ])
+        n_years=len(set(allyears))
+        allmonths=np.array([ d.month for d in self.dates ])
+        alleventsmonths=np.array([ d.month for d in self.edates ])
+        alleventsyears=np.array([ d.year for d in self.edates ])
+        
+        I=np.ndarray([12,n_years]) +np.NaN# I for each month each year
+        I_std= np.nanstd(np.array(self.eflux)/np.array(self.etropvc)) # Impact stdev
+        
+        P=np.ndarray([12,n_years]) +np.NaN# P for each month each year
+        
+        # for each year
+        for yi,year in enumerate(set(allyears)):
+            # for each month
+            for mi in range(12):
+                inds=(allmonths == mi+1) * (allyears == year)
+                n_m=np.sum(inds) # number of measurements
+                einds=(alleventsmonths == mi+1) * (alleventsyears == year)
+                n_e=np.sum(einds) # number of event detections
+                if n_m==0: 
+                    if verbose: 
+                        print("%s has no measurements on %d-%d"%(self.name,year,mi+1))
+                    continue # no measuremets this month & year
+                P[mi,yi] = n_e / float(n_m) # Likelihood of event per measurement
+                if n_e != 0:
+                    I[mi,yi] = np.mean(np.array(self.eflux)[einds]/np.array(self.etropvc)[einds]) # Impact
+        # end of year loop
+        
+        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]]
+        # take multiyear monthly average
+        I=np.nanmean(I,axis=1) # dim: 12
+        P_std=np.nanstd(P,axis=1) # dim: 12
+        P_season_std= np.array([np.nanstd(P[sinds[i],:]) for i in range(4)]) # dim: 4
+        P_std_fixed=[] # seasonal stretched over monthly std
+        for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
+            P_std_fixed.extend(P_season_std[i]) 
+        P_std_fixed=np.array(P_std_fixed)
+        P=np.nanmean(P,axis=1) # multiyear mean for each month
+        
+        return {"P":P,"P_std":P_std_fixed,"P_std_orig":P_std,"I":I,
+                "I_std":I_std,"P_season_std":P_season_std}
     
     def _set_density(self):
         '''
