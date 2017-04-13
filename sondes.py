@@ -299,6 +299,8 @@ class sondes:
         
         I=np.ndarray([12,n_years]) +np.NaN# I for each month each year
         I_std= np.nanstd(np.array(self.eflux)/np.array(self.etropvc)) # Impact stdev
+        if verbose:
+            print ("%s I_std:%.5f"%(self.name,I_std))
         
         P=np.ndarray([12,n_years]) +np.NaN# P for each month each year
         
@@ -319,19 +321,25 @@ class sondes:
                     I[mi,yi] = np.mean(np.array(self.eflux)[einds]/np.array(self.etropvc)[einds]) # Impact
         # end of year loop
         
-        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]]
-        # take multiyear monthly average
-        I=np.nanmean(I,axis=1) # dim: 12
-        P_std=np.nanstd(P,axis=1) # dim: 12
-        P_season_std= np.array([np.nanstd(P[sinds[i],:]) for i in range(4)]) # dim: 4
-        P_std_fixed=[] # seasonal stretched over monthly std
-        for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
-            P_std_fixed.extend(P_season_std[i]) 
-        P_std_fixed=np.array(P_std_fixed)
-        P=np.nanmean(P,axis=1) # multiyear mean for each month
+        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]] # season indices
         
-        return {"P":P,"P_std":P_std_fixed,"P_std_orig":P_std,"I":I,
-                "I_std":I_std,"P_season_std":P_season_std}
+        # take multiyear monthly average
+        I_s         = np.array([np.nanstd(I[sinds[i],:]) for i in range(4)]) # dim: 4
+        I           = np.nanmean(I,axis=1) # dim: 12
+        #P_std       = np.nanstd(P,axis=1) # dim: 12
+        P_s         = np.array([np.nanmean(P[sinds[i],:]) for i in range(4)]) # dim: 4
+        #P_std_s     = np.array([np.nanstd(P[sinds[i],:]) for i in range(4)]) # dim: 4
+        P_std_s     = (P_s * (1-P_s))**0.5 # bernoulli distribution
+        P           = np.nanmean(P,axis=1) # multiyear mean for each month
+        P_std       = (P * (1-P))**0.5 # 
+        P_std_fixed = [] # seasonal stretched over monthly std
+        for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
+            P_std_fixed.append(P_std_s[i]) 
+        P_std_fixed=np.array(P_std_fixed)
+        
+        
+        return {"P":P,"P_std_fixed":P_std_fixed,"P_std":P_std,"I":I,
+                "I_s":I_s,"I_std":I_std,"P_s":P_s,"P_std_s":P_std_s}
     
     def _set_density(self):
         '''

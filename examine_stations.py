@@ -29,7 +29,7 @@ from JesseRegression import RMA
 
 # GLOBALS:
 #
-__DEBUG__=False
+__DEBUG__=True
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
@@ -489,147 +489,7 @@ def sondes_in_region(Region):
         print([s.name for s in sonde_files])
     return(sonde_files)
 
-#def STT_extrapolation_seasonal(Region,event_lifetime=2.5, lifetime_uncertainty=0.3,all_sonde_files=None):
-#    '''
-#    Estimate STT flux in a particular region, binning into seasons
-#    Region: [S ,W ,N ,E]
-#    Returns: Structure with following:
-#        IPMT= numpy array(4,4), [param x season]
-#        flux=product on axis 0,
-#        flux_range is 2x4 lower to upper stddev for flux
-#        IPMT_stdev is 4x4 std deviations for each season in the multi year dataset
-#        I, P, M are mean measured seasonal (I)mpact, event detection (P)robability, and (M)easurement count
-#        T is GEOS-Chem tropospheric ozone column, Flux is these 4 factors multiplied
-#    '''
-#    # seasons by month indexes
-#    seasons=[[12,1,2],[3,4,5],[6,7,8],[9,10,11]]
-#    sinds = [[11,0,1],[2,3,4],[5,6,7],[8,9,10]]
-#    
-#    # Read sondes data
-#    if all_sonde_files is None:
-#        all_sonde_files=[fio.read_sonde(s) for s in range(3)]
-#    
-#    sonde_files=sondes_in_region(Region)
-#    
-#    # model SO tropospheric O3 Column:
-#    GCData=fio.read_GC_global()
-#    TropO3, TropO3_stdev = GCData.averagedTVC(Region)
-#    # convert month to seasonal
-#    TropO3 = np.array([np.mean(TropO3[sinds[i]]) for i in range(4)])
-#    TropO3_stdev = np.repeat(TropO3_stdev,4)
-#    
-#    # How many sondes have we:
-#    n_s=len(sonde_files)
-#    
-#    # monthly (I)mpact (event O3 / trop O3):
-#    # Events per measurement or Event (P)robability
-#    # (M)easurements per month
-#    # (T)ropO3
-#    IPMT = np.zeros([4,4,n_s])
-#    
-#    # Set M parameter using assumed event lifetime
-#    M=30.0/float(event_lifetime)
-#    
-#    # Std_deviation of each factor
-#    IPMT_stdev=np.zeros([4,4,n_s])
-#    counts = np.zeros([4,n_s])
-#    
-#    # for each site:
-#    for ii, os in enumerate(sonde_files):
-#        # indices of all events and all sondes within this month
-#        allyears=np.array([ d.year for d in os.dates ])
-#        n_years=len(set(allyears))
-#        allmonths=np.array([ d.month for d in os.dates ])
-#        alleventsmonths=np.array([ d.month for d in os.edates ])
-#        alleventsyears=np.array([ d.year for d in os.edates ])
-#        # How many of each month do the measurements span?
-#        n_months_check = np.array([len(set([date.year for date in os.dates if date.month == month])) for month in np.arange(1,12.1)])
-#        
-#        IPMTi=np.ndarray([4,4,n_years]) +np.NaN# factors for season each year
-#        
-#        # for each year
-#        for yi, year in enumerate(set(allyears)):
-#            # for each month
-#            for si in range(4):
-#                # where year == year and month = (a b or c)
-#                inds = (allyears == year) * ( (allmonths == seasons[si][0] ) +  
-#                    (allmonths == seasons[si][1] ) + (allmonths == seasons[si][2] ) )
-#                einds= (alleventsyears == year) * ( (alleventsmonths == seasons[si][0] ) +  
-#                    (alleventsmonths == seasons[si][1] ) + (alleventsmonths == seasons[si][2] ) )
-#                n_m=np.sum(inds) # number of measurements
-#                n_e=np.sum(einds) # number of event detections
-#                counts[si,ii]=counts[si,ii]+n_e
-#                if n_m==0: 
-#                    if __DEBUG__: 
-#                        print("%s has no measurements in year %d, season %d"%(os.name,year,si+1))
-#                    continue # no measuremets this month & year
-#                #IPMTi[2,mi,yi] = n_m # count of this months measurements
-#                IPMTi[0,si,yi] = np.NaN # Impact
-#                IPMTi[1,si,yi] = 0.0 # Event detection Probability
-#                if n_e != 0:
-#                    IPMTi[0,si,yi] = np.mean(np.array(os.eflux)[einds]/np.array(os.etropvc)[einds]) # Impact
-#                    IPMTi[1,si,yi] = n_e / float(n_m) # Likelihood of event per measurement
-#        # end of year loop
-#        
-#        # take multiyear monthly average
-#        IPMT[:,:,ii]=np.nanmean(IPMTi,axis=2)
-#        IPMT[2,:,ii] = M # set the M parameter
-#        IPMT[3,:,ii] = TropO3 # set the T parameter
-#        
-#        # get the stdev
-#        IPMT_stdev[:,:,ii] = np.nanstd(IPMTi,axis=2)
-#        IPMT_stdev[3,:,ii] = TropO3_stdev
-#        
-#        # When just one measurement used, set stdev to 100%
-#        # IPMT_stdev[IPMT_stdev==0]=IPMT[IPMT_stdev==0] 
-#        
-#        if __DEBUG__:
-#            print("%s spans this many of each month:"%(os.name))
-#            print(n_months_check)
-#            print("With these event detection probabilities:")
-#            print(IPMT[1,:,ii])
-#    # end of sites loop
-#    
-#    ## Now we take the average between the sites
-#    #
-#    IPMT=np.mean(IPMT, axis=2) # Average between sondes
-#    
-#    # calculate flux
-#    flux = np.nanprod(IPMT,axis=0)
-#    
-#    # uncertainty reduced by root of independent measurement count
-#    # assume each sonde site is independent
-#    IPMT_stdev=np.nanmean(IPMT_stdev,axis=2) / np.sqrt(n_s) 
-#    # set std dev of event lifetime
-#    IPMT_stdev[2,:] = lifetime_uncertainty * M 
-#
-#    # Set up bracketed range based on event lifetime of 1 day to 0.25 months
-#    prod=np.nanprod(IPMT[[0,1,3],:],axis=0)
-#    flux_bracket = np.zeros([2,4])
-#    flux_bracket[0,:] = 4.0 * prod
-#    flux_bracket[1,:] = 30.0 * prod
-#    
-#    # proportional uncertainty
-#    uncertainty = IPMT_stdev / IPMT # [4,4]
-#    
-#    flux_uncertainty = np.nansum(uncertainty,axis=0) # sum of factor proportional uncertainties
-#    flux_range = np.zeros([2,4])
-#    flux_range[0,:] = flux * (1-flux_uncertainty)
-#    flux_range[1,:] = flux * (1+flux_uncertainty)
-#    
-#    if __DEBUG__: 
-#        print("IPMT_stdev %s:"%str(IPMT_stdev.shape))
-#        print (IPMT_stdev)
-#        print("flux uncertainty:")
-#        print (flux_uncertainty)
-#        print("flux_range:")
-#        for jj in range(4):
-#            print("%d: %.2e"%(jj+1,flux_range[1,jj]-flux_range[0,jj]))
-#    
-#    return {"IPMT":IPMT, "flux":flux, "flux_range":flux_range, 
-#            "IPMT_stdev":IPMT_stdev, "flux_bracket":flux_bracket}
-
-def STT_extrapolation(Region,event_lifetime=2.5, lifetime_uncertainty=.3, all_sonde_files=None, seasonal=False):
+def STT_extrapolation(Region,event_lifetime=2, lifetime_uncertainty=.5, all_sonde_files=None, seasonal=False):
     '''
     Estimate STT flux in a particular region
     Region: [S ,W ,N ,E]
@@ -637,7 +497,7 @@ def STT_extrapolation(Region,event_lifetime=2.5, lifetime_uncertainty=.3, all_so
         IPMT= numpy array(4,12),
         flux=product on axis 0,
         flux_range is 2x12 lower to upper stddev for flux
-        IPMT_stdev is 4x12 std deviations for each month in the multi year dataset
+        IPMT_std is 4x12 std deviations for each month in the multi year dataset
         I, P, M are mean measured monthly (I)mpact, (P)robability of detection, and possible (M)easurements per month
         T is GEOS-Chem tropospheric ozone column, Flux is these 4 factors multiplied
     '''
@@ -645,17 +505,20 @@ def STT_extrapolation(Region,event_lifetime=2.5, lifetime_uncertainty=.3, all_so
     if all_sonde_files is None:
         all_sonde_files=[fio.read_sonde(s) for s in range(3)]
     
+    Tdim=[12,4][seasonal] # time dimension
+    
     sonde_files=sondes_in_region(Region)
     
     # model SO tropospheric O3 Column:
     GCData=fio.read_GC_global()
     TropO3, TropO3_stdev = GCData.averagedTVC(Region)
-    TropO3_stdev = np.repeat(TropO3_stdev,12)
-    
+    TropO3_stdev = np.repeat(TropO3_stdev,Tdim)
+    if seasonal:
+        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]]
+        TropO3=np.array([np.nanmean(TropO3[sinds[i]]) for i in range(4)]) # dim: 4
     # How many sondes have we:
     n_s=len(sonde_files)
     
-    Tdim=[12,4][seasonal]
     # monthly (I)mpact (event O3 / trop O3):
     I=np.zeros([Tdim,n_s])
     I_std=np.zeros([n_s]) # assumed heteroskedastic
@@ -673,20 +536,21 @@ def STT_extrapolation(Region,event_lifetime=2.5, lifetime_uncertainty=.3, all_so
     IPMT = np.zeros([4,Tdim])
     
     # Std_deviation of each factor
-    IPMT_stdev=np.zeros([4,Tdim])
+    IPMT_std=np.zeros([4,Tdim])
     counts = np.zeros([Tdim,n_s])
+    
+    ss=["","_s"][seasonal]
     
     # for each site we calculate I and P
     for ii, os in enumerate(sonde_files):
         params=os.get_flux_params() # {"P":P,"P_std":P_std_fixed,"P_std_orig":P_std,"I":I, "I_std":I_std,"P_season_std":P_season_std}
-        P[:,ii]=params["P"]
-        P_std[:,ii]=params['P_std']
-        I[:,ii]=params["P"]
-        I_std[ii]=params["I_std"]
+        P[:,ii]=params["P"+ss]
+        P_std[:,ii]=params['P_std'+ss]
+        I[:,ii]=params["I"+ss]
+        I_std[ii]=params["I_std"] # constant -> homoskedastic
         if __DEBUG__:
-            print("%s spans this many of each month:"%(os.name))
-            print()
-            print("With these likelihoods of event detection:")
+            print("%s"%(os.name))
+            print("has these likelihoods of event detection:")
             print(P[:,ii])
     # end of sites loop
     
@@ -697,13 +561,21 @@ def STT_extrapolation(Region,event_lifetime=2.5, lifetime_uncertainty=.3, all_so
     IPMT[2,:]=M # reset the M parameter
     IPMT[3,:]=T
     # for stdevs also:
-    IPMT_stdev[0,:]=np.nanmean(I_std)/np.sqrt(n_s)
-    IPMT_stdev[1,:]=np.nanmean(P_std, axis=1)/np.sqrt(n_s)
-    IPMT_stdev[2,:]=M_std
-    IPMT_stdev[3,:]=T_std
+    IPMT_std[0,:]=np.nanmean(I_std)/np.sqrt(n_s)
+    IPMT_std[1,:]=np.nanmean(P_std, axis=1)/np.sqrt(n_s)
+    IPMT_std[2,:]=M_std
+    IPMT_std[3,:]=T_std
     
+    # flux = I*P*M*T
     flux = np.nanprod(IPMT,axis=0)
-
+    
+    # Product variance from Sandy Burden:
+    # Var(IPMT) = (P(1-P) + P^2) * (var(I)+I^2) * (var(T) + T^2) * (var(M) + M^2) - (IPMT)^2
+    IPMT_var=IPMT_std ** 2
+    flux_prod_a=np.nanprod([IPMT_var[i,:]+IPMT[i,:]**2 for i in range(4)],axis=0) # dim 12 or 4        
+    flux_var= flux_prod_a - flux**2
+    flux_std= flux_var**0.5
+    
     # Set up bracketed range based on event lifetime of 1 day to 0.25 months
     prod=np.nanprod(IPMT[[0,1,3],:],axis=0)
     flux_bracket=np.zeros([2,Tdim])
@@ -711,24 +583,27 @@ def STT_extrapolation(Region,event_lifetime=2.5, lifetime_uncertainty=.3, all_so
     flux_bracket[1,:] = 30.0 * prod
     
     # proportional uncertainty
-    uncertainty = IPMT_stdev / IPMT # [4,Tdim]
+    uncertainty = IPMT_std / IPMT # [4,Tdim]
     
     flux_uncertainty = np.nansum(uncertainty,axis=0) # sum of factor proportional uncertainties
+    flux_range_old = np.zeros([2,Tdim])
+    flux_range_old[0,:] = flux * (1-flux_uncertainty)
+    flux_range_old[1,:] = flux * (1+flux_uncertainty)
+    
     flux_range = np.zeros([2,Tdim])
-    flux_range[0,:] = flux * (1-flux_uncertainty)
-    flux_range[1,:] = flux * (1+flux_uncertainty)
+    flux_range[0,:] = flux + flux_std
+    flux_range[1,:] = flux - flux_std
     
     if __DEBUG__: 
-        print("IPMT_stdev %s:"%str(IPMT_stdev.shape))
-        print (IPMT_stdev)
-        print("flux uncertainty:")
-        print (flux_uncertainty)
-        print("flux_range:")
+        print("IPMT_std %s:"%str(IPMT_std.shape))
+        print (IPMT_std)
+        print("flux uncertainty (Sandy way, Old way):")
         for jj in range(Tdim):
-            print("%d: %.2e"%(jj+1,flux_range[1,jj]-flux_range[0,jj]))
+            print("%d: %.2f, %.2f"%(jj+1,flux_std[jj]/flux[jj] * 100.0, flux_uncertainty[jj]*100.0))
     
-    return {"IPMT":IPMT, "flux":flux, "flux_range":flux_range, 
-            "IPMT_stdev":IPMT_stdev, "flux_bracket":flux_bracket}
+    return {"IPMT":IPMT, "flux":flux, "flux_range_old":flux_range_old, 
+            "flux_std":flux_std, "flux_range":flux_range,
+            "IPMT_std":IPMT_std, "flux_bracket":flux_bracket}
 
 
 
@@ -740,10 +615,11 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     
     extrap = STT_extrapolation(Region, all_sonde_files=all_sonde_files, seasonal=seasonal)
     IPMT=extrap["IPMT"]
+    IPMT_std=extrap["IPMT_std"]
     flux=extrap["flux"]
     flux_range=extrap["flux_range"]
     flux_bracket=extrap['flux_bracket']
-    IPMT_stdev=extrap["IPMT_stdev"]
+    flux_std=extrap["flux_std"]
     
     I=IPMT[0,:]
     P=IPMT[1,:]
@@ -776,8 +652,11 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     # plot the flux line:
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     # plot errorbars
-    #plt.errorbar(X, flux, yerr=flux_error, linestyle="None", marker="None", color="k")
+    # show + or minus one standard deviation
     plt.fill_between(X, flux_range[0,:], flux_range[1,:], color='grey', alpha='0.5')
+    # also show bracket with dashed lines
+    plt.plot(X,flux_bracket[0,:], 'k--')
+    plt.plot(X,flux_bracket[1,:], 'k--')
     
     # plot limits, title, and labels
     plt.title("Ozone flux from STTs")
@@ -831,19 +710,17 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     # calculate monthly flux in kg/km2/month (to compare with skerlak2014)
     # flux : [molecules O3/ cm2 / month]
     #         x  * cm2/km2 * g/mol * kg/g * mol/molecule]
-    flux_kg = flux * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
-    flux_uncertainty=IPMT_stdev/IPMT*100.0
-    tot_unc=np.nansum(flux_uncertainty,axis=0)
+    flux_kg  = flux * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
+    IPMT_unc = IPMT_std/IPMT * 100
+    flux_unc = flux_std/flux * 100.
     
     print ("[kg/km2/month]: ")
-    out=""
     for ii in range(len(flux_kg)):
-        out = out + "%d : %5.3f(%5.1f%%), "%(ii+1,flux_kg[ii],tot_unc[ii])
-    print(out)
+        print("%d : %5.3f(%5.1f%%), "%(ii+1,flux_kg[ii],flux_unc[ii]))
     
     for jj in range(len(X)):
-        outset=(jj+1,flux_uncertainty[0,jj],flux_uncertainty[1,jj],
-                flux_uncertainty[2,jj],flux_uncertainty[3,jj],tot_unc[jj])
+        outset=(jj+1,IPMT_unc[0,jj],IPMT_unc[1,jj],
+                IPMT_unc[2,jj],IPMT_unc[3,jj],flux_unc[jj])
         print("%d : I:%.2f%%, P:%.2f%%, M:%.2f%%, T:%.2f%%, TOTAL: %3.2f"%outset)
     
 
@@ -1780,7 +1657,7 @@ if __name__ == "__main__":
     Reg_Melb=[-48,134,-28,156]
     Reg_Mac=[-65,143,-45, 175]
     Reg_Dav=[-79,53,-59,103]
-    for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
+    for i,reg in enumerate([Reg_Melb]):#, Reg_Mac, Reg_Dav]):
         #check_factors(reg)
         for seasonal in [False,True]:
             name=fstr[i]+["","_S"][seasonal]+'.png'
