@@ -9,7 +9,7 @@ Me das tu numero?
 """
 
 import numpy as np
-#from datetime import datetime, timedelta
+from datetime import datetime#, timedelta
 from tau_to_date import tau_to_date as ttd
 
 ##################################################################
@@ -106,6 +106,64 @@ class GChem:
             cb.set_label(label)
         return m,cb
     
+    def averagedTVC_monthly(self, Region):
+        '''
+        Average tropospheric vertical column for Region
+        Region: [S ,W ,N ,E]        
+        Returns: data, date, std
+        Return units: molecules/cm2
+        Return dimension: X months of data
+        '''
+        allmonths= np.array([ d.month for d in self.dates ])
+        allyears= np.array([d.year for d in self.dates])
+        data=[]
+        std=[]
+        date=[]
+        south,west,north,east=Region
+        assert north > south, "North needs to be greater than south"
+        assert east > west, "East needs to be greater than west"
+        
+        loninds=np.where( (east > self.lons) * (self.lons > west) )[0]
+        latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
+        TVC=self.O3tropVC[:, latinds, :]
+        TVC=TVC[:, :, loninds]
+        for year in set(allyears):
+            for month in range(12):
+                inds= (allmonths == month+1) * (allyears==year)
+                data.append(np.mean(TVC[inds,:,:]))
+                std.append(np.std(TVC[inds,:,:]))
+                date.append(datetime(year,month+1,1))
+        return data, date, std
+    
+    def averagedTVC(self, Region, homeoskedastic=True):
+        '''
+        Average tropospheric vertical column for Region
+        Region: [S ,W ,N ,E]        
+        Returns: data, std
+            data
+            std. deviation
+        Return units: molecules/cm2
+        Return dimension: 12 months
+        '''
+        data=np.zeros(12)
+        std=np.zeros(12)
+        allmonths= np.array([ d.month for d in self.dates ])
+        south,west,north,east=Region
+        assert north > south, "North needs to be greater than south"
+        assert east > west, "East needs to be greater than west"
+        
+        loninds=np.where( (east > self.lons) * (self.lons > west) )[0]
+        latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
+        TVC=self.O3tropVC[:, latinds, :]
+        TVC=TVC[:, :, loninds]
+        for i in range(12):
+            minds=np.where(allmonths == i+1)[0]
+            data[i]=np.mean(TVC[minds])
+            std[i]=np.std(TVC[minds])
+        if homeoskedastic:
+            std=np.std(TVC)
+        return data, std
+    
     def southernOceanTVC(self, north=-35,south=-75):
         '''
         Get the Tropospheric Vertical Column averaged into months
@@ -115,6 +173,7 @@ class GChem:
         '''
         data=np.zeros(12)
         allmonths= np.array([ d.month for d in self.dates ])
+        
         latinds=np.where( (north > self.lats) * (self.lats > south) )[0]
         SOTVC=self.O3tropVC[:,latinds,:]
         for i in range(12):
@@ -164,7 +223,13 @@ class GCArea:
         #        print ('Changed?')
         return np.sum(self.area[:,inds])
     
-    #def gridbox_area(self, lat, lon):
+    def region_area(self, Region):
+        S,W,N,E=Region
+        lats = (self.lats >= S) * (self.lats <= N) 
+        lons = (self.lons >= W) * (self.lons <= E)
+        Area=self.area[lons,:]
+        Area=Area[:,lats]
+        return np.sum(Area)
     
         
         

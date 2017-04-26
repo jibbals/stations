@@ -33,7 +33,7 @@ class sondes:
         self.edates= [] # event dates
         self.edatedeltas= [] # sonde datetime - event datetime
         self.edepth= [] # sonde depth in km, ported from IDL
-        self.eflux = [] # EVENT FLUX FROM GEOS-CHEM IN MOLECULES/CM2
+        self.eflux = [] # EVENT FLUX FROM IDL IN MOLECULES/CM2
         self.einds = [] # event indices
         self.epeak = [] # event peak altitudes (km)
         self.etype = [] # event is either from a cutoff low, a front, or something else
@@ -98,7 +98,7 @@ class sondes:
             self.dates[di], \
             self.tp[di], self.tplr[di], self.tpo3[di])
         return profile
-    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16)):
+    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False, rh=True, ):
         import matplotlib.pyplot as plt
         prof=self.get_profile(date)
         date2=prof[4]
@@ -111,20 +111,44 @@ class sondes:
         ax1.plot(prof[1],yaxi,'k',linewidth=2.0)
         ax2 = ax1.twiny()
         ax2.plot(prof[2],yaxi,'r')
-        ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
+        if alltps:
+            ax1.plot([xl,xr],[prof[6],prof[6]],'--r')
+            ax1.plot([xl,xr],[prof[7],prof[7]],'--k')
+        else:
+            ax1.plot([xl,xr],[prof[5],prof[5]],'--k')
+        if rh:
+            ax3 = ax1.twiny()
+            ax3.plot(prof[3], yaxi, 'b')
+            # Move twinned axis ticks and label from top to bottom
+            ax3.xaxis.set_ticks_position("bottom")
+            ax3.xaxis.set_label_position("bottom")
+            
+            # Offset the twin axis below the host
+            ax3.spines["bottom"].set_position(("axes", -0.15))
+            ax3.set_frame_on(True)
+            ax3.patch.set_visible(False)
+            for sp in ax2.spines.itervalues():
+                sp.set_visible(False)
+            ax3.spines["bottom"].set_visible(True)
+            ax3.set_xticks(np.arange(0,100.1,25.0))
+            ax3.set_xlim(0,100)
+            ax3.set_xlabel('RH(%)')
+            fig.tight_layout()
+            
         ax1.set_ylim(yl,yr)
         ax1.set_xlim(xl,xr)
-        ax2.set_xlim(-55,25)
+        ax2.set_xlim(-75,25)
+        
         #plt.yscale('log')
         
         ax1.set_ylabel('GPH (km)')
-        ax2.set_xlabel('Temp (C)')
+        ax2.set_xlabel('Temp (C)', color='r')
         ax1.set_xlabel('Ozone (ppbv)')
 
         title=self.name+' '+date2.strftime('%Y-%m-%d')
         ax1.set_title(title,x=0.5,y=0.93)
         return(fig)
-    def _set_tps(self):
+    def _set_tps(self, zangl=False):
         
         polar = (np.abs(self.lat) > 60)
 
@@ -133,7 +157,7 @@ class sondes:
         for si in np.arange(0,ns):
             ppbv=np.array(self.o3ppbv[si,:])
             Z=np.array(self.gph[si,:]) / 1e3 # m to km
-            tpo3=-1.0
+            tpo3=np.NaN
 
             ## FIRST
             ## set the ozone tropopause
@@ -146,8 +170,8 @@ class sondes:
             testrange=np.intersect1d(z1,z2)
             upper = [ 2.0, 1.5 ][polar]
             if np.size(testrange) < 2 or np.size(Z) < 2 :
-                self.tpo3.append(-1)
-                self.tplr.append(-1)
+                self.tpo3.append(np.NaN)
+                self.tplr.append(np.NaN)
                 continue
             for ind in testrange:
                 
@@ -170,9 +194,9 @@ class sondes:
             
             ## SECOND 
             ## find temperature tropopause
-            tplr=-1.0
+            tplr=np.NaN # if not set here leave it as NAN
             rate=-2.0
-            minh=2.0
+            minh=4.0 #UPDATED FROM 2 TO 4 KM Fri 31 MAR 2017
             temp=np.array(self.temp[si,:])
             temp=temp[Z > minh]
             Z=Z[Z>minh]
@@ -182,20 +206,49 @@ class sondes:
             testrange=np.where(lapse > rate)[0]
             for ind in testrange[0:-1]:
                 alt=Z[ind]
+                
+                # we will look at subsequent 2km above each test point
                 z1=np.where(Z > alt)[0]
                 z2=np.where(Z < (alt+2.0))[0]
                 checks =np.intersect1d(z1,z2) 
                 
-                if np.mean(lapse[checks]) > rate :
-                    tplr=alt
-                    break
+                # thickness criterion Zangl 2001 Appendix A
+                if zangl:
+                    Ttp=temp[ind]
+                    Ztp=Z[ind]
+                    criterion=True
+                    for j in checks:
+                        if ((temp[j]-Ttp)/(Z[j]-Ztp) < -2):
+                            criterion=False
+                            break
+                        else:
+                            continue
+                    if criterion:
+                        tplr=alt
+                        break
+                else: # my way
+                    if np.mean(lapse[checks]) > rate :
+                        tplr=alt
+                        break
+            
+            __DEBUG__=False
+            if (tplr < 5) and __DEBUG__:
+                print("DEBUG:")
+                print("Lapse Rate")
+                print(lapse[checks])    # lapse rate
+                print("Z:")
+                print(Z[checks])
+                print("Range checked:")
+                print(checks)   # Where we loooked
             self.tplr.append(tplr)
         ## FINALLY
         # tp is minimum of lapse rate and ozone tropopause
-        self.tp = np.minimum(self.tplr,self.tpo3).tolist()
+        self.tp = np.minimum(self.tplr,self.tpo3).tolist() 
+        
+        # add index of tropopause level to sonde profile
         for i in range(ns):
             Z=np.array(self.gph[i,:])/1e3
-            if self.tp[i]  == -1:
+            if np.isnan(self.tp[i]):
                 self.tpinds.append(np.NaN)
             else:
                 self.tpinds.append(np.where(Z == self.tp[i])[0][0])
@@ -233,6 +286,60 @@ class sondes:
             
     
         return(ndat)
+    
+    def get_flux_params(self, verbose=False):
+        ''' Find I and P and the std_deviations '''
+        
+        # Used to get indices from certain month or year:
+        allyears=np.array([ d.year for d in self.dates ])
+        n_years=len(set(allyears))
+        allmonths=np.array([ d.month for d in self.dates ])
+        alleventsmonths=np.array([ d.month for d in self.edates ])
+        alleventsyears=np.array([ d.year for d in self.edates ])
+        
+        I=np.ndarray([12,n_years]) +np.NaN# I for each month each year
+        I_std= np.nanstd(np.array(self.eflux)/np.array(self.etropvc)) # Impact stdev
+        if verbose:
+            print ("%s I_std:%.5f"%(self.name,I_std))
+        
+        P=np.ndarray([12,n_years]) +np.NaN# P for each month each year
+        
+        # for each year
+        for yi,year in enumerate(set(allyears)):
+            # for each month
+            for mi in range(12):
+                inds=(allmonths == mi+1) * (allyears == year)
+                n_m=np.sum(inds) # number of measurements
+                einds=(alleventsmonths == mi+1) * (alleventsyears == year)
+                n_e=np.sum(einds) # number of event detections
+                if n_m==0: 
+                    if verbose: 
+                        print("%s has no measurements on %d-%d"%(self.name,year,mi+1))
+                    continue # no measuremets this month & year
+                P[mi,yi] = n_e / float(n_m) # Likelihood of event per measurement
+                if n_e != 0:
+                    I[mi,yi] = np.mean(np.array(self.eflux)[einds]/np.array(self.etropvc)[einds]) # Impact
+        # end of year loop
+        
+        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]] # season indices
+        
+        # take multiyear monthly average
+        I_s         = np.array([np.nanstd(I[sinds[i],:]) for i in range(4)]) # dim: 4
+        I           = np.nanmean(I,axis=1) # dim: 12
+        #P_std       = np.nanstd(P,axis=1) # dim: 12
+        P_s         = np.array([np.nanmean(P[sinds[i],:]) for i in range(4)]) # dim: 4
+        #P_std_s     = np.array([np.nanstd(P[sinds[i],:]) for i in range(4)]) # dim: 4
+        P_std_s     = (P_s * (1-P_s))**0.5 # bernoulli distribution
+        P           = np.nanmean(P,axis=1) # multiyear mean for each month
+        P_std       = (P * (1-P))**0.5 # 
+        P_std_fixed = [] # seasonal stretched over monthly std
+        for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
+            P_std_fixed.append(P_std_s[i]) 
+        P_std_fixed=np.array(P_std_fixed)
+        
+        
+        return {"P":P,"P_std_fixed":P_std_fixed,"P_std":P_std,"I":I,
+                "I_s":I_s,"I_std":I_std,"P_s":P_s,"P_std_s":P_std_s}
     
     def _set_density(self):
         '''
@@ -372,4 +479,7 @@ class sondes:
         self.rh = 0 # rel humidity
         self.temp = 0 # temperature(Celcius)
         
-        
+    #def determine_events(self):
+    #    '''
+    #    Run bandpass filter and determine event indices.
+    #    '''

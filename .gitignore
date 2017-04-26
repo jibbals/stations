@@ -1,2 +1,4 @@
 **/*.pyc
 **/trac_avg_geos5*
+images/eventprofiles/temp
+**/*~
