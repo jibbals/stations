@@ -838,6 +838,49 @@ def event_profiles_best():
     plt.savefig(pltname)
     print (pltname+' saved!')
     
+def sonde_profile(date, site=2, name=None):
+    ## First read the station data
+    sondes=fio.read_sonde(site=site)
+    stn_name=sondes.name
+    title=stn_name + date.strftime(" %Y %m %d")
+    ymd=date.strftime('%Y%m%d')
+    if name is None: name='images/%s_sonde_%s.png'%(stn_name,ymd)
+    i=sondes.get_index(date)
+    
+    O3  = sondes.o3ppbv[i,:]  # [time, level] (O3 ppbv)
+    P   = sondes.press[i,:]   # [time, level] (hPa)
+    rh   = sondes.rh[i,:]     # [time, level] (rel humidity)
+    T    = sondes.temp[i,:]   # [time, level] (temperature C)
+    #pv   = sondes.
+    
+    f = plt.figure(0,figsize=[7,10])
+    plt.plot(O3, P, color='k', linewidth=3)
+    plt.title=title
+    plt.ylim([1015,250])
+    plt.yscale('log')
+    ax=plt.gca()
+    # remove top and right axes
+    ax.spines['right'].set_color('none'); ax.spines['top'].set_color('none')
+    
+    # new axis for temp
+    ax2=ax.twiny()
+    
+    # Turn on the frame for the twin axis, but then hide all 
+    # but the bottom spine
+    ax2.set_frame_on(True)
+    ax2.patch.set_visible(False)
+    for sp in ax2.spines.itervalues():
+        sp.set_visible(False)
+    ax2.spines["bottom"].set_visible(True)
+    ax2.spines["bottom"].set_position(("axes", -0.15))
+    
+    plt.sca(ax2)
+    plt.plot(T,P, color='red',linewidth=1)
+    
+    plt.savefig(name)
+    f.close()
+    
+
 def event_profiles(station=2, data=None, legend=False):
     '''
     Plot all the modelled profiles alongside sonde profiles for event dates
@@ -1342,10 +1385,12 @@ if __name__ == "__main__":
     print ("Running")
     #brief_summary()
     #summary_plots()
+    sonde_profile(datetime(2005,2,3), name='images/melb_sonde_20050203.png')
+    sonde_profile(datetime(2010,10,13), name='images/melb_sonde_20101013.png')
     #event_profiles_best()
     #plot_andrew_STT()
     #check_extrapolation()
-    plot_SO_extrapolation()
+    #plot_SO_extrapolation()
     #seasonal_tropopause() # plot tpheights.png
     #seasonal_tropozone()
     #check_GC_output()
