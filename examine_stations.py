@@ -1702,11 +1702,11 @@ if __name__ == "__main__":
     Reg_Melb=[-48,134,-28,156]
     Reg_Mac=[-65,143,-45, 175]
     Reg_Dav=[-79,53,-59,103]
-    for i,reg in enumerate([Reg_Melb]):#, Reg_Mac, Reg_Dav]):
+    for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
         #check_factors(reg)
-        for seasonal in [False,True]:
-            name=fstr[i]+["","_S"][seasonal]+'.png'
-            plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
+        seasonal=True
+        name=fstr[i]+["","_S"][seasonal]+'.png'
+        plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
     
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
