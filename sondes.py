@@ -98,6 +98,7 @@ class sondes:
             self.dates[di], \
             self.tp[di], self.tplr[di], self.tpo3[di])
         return profile
+    
     def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False, rh=True, ):
         import matplotlib.pyplot as plt
         prof=self.get_profile(date)
@@ -148,6 +149,7 @@ class sondes:
         title=self.name+' '+date2.strftime('%Y-%m-%d')
         ax1.set_title(title,x=0.5,y=0.93)
         return(fig)
+    
     def _set_tps(self, zangl=False):
         
         polar = (np.abs(self.lat) > 60)
@@ -297,12 +299,21 @@ class sondes:
         alleventsmonths=np.array([ d.month for d in self.edates ])
         alleventsyears=np.array([ d.year for d in self.edates ])
         
-        I=np.ndarray([12,n_years]) +np.NaN# I for each month each year
-        I_std= np.nanstd(np.array(self.eflux)/np.array(self.etropvc)) # Impact stdev
-        if verbose:
-            print ("%s I_std:%.5f"%(self.name,I_std))
-        
+        I=np.ndarray([12,n_years]) +np.NaN  # I for each month each year
+        I_m = np.ndarray([12]) + np.NaN   # I for each month 
         P=np.ndarray([12,n_years]) +np.NaN# P for each month each year
+        P_m=np.ndarray([12])+np.NaN # P for each month
+        P_s=np.zeros(4)+np.NaN # seasonal Prob of occurrence
+        I_s=np.zeros(4)+np.NaN # seasonal Impact
+        
+        I_arr=np.array(self.eflux)/np.array(self.etropvc) #Impacts
+        I_lst=list(I_arr) # list of I values
+        I_std= np.nanstd(I_arr) # Impact stdev
+        
+        for mi in range(12):
+            I_m[mi]=np.nanmean(np.array(I_lst)[alleventsmonths==mi+1])
+        
+        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]] # season indices
         
         # for each year
         for yi,year in enumerate(set(allyears)):
@@ -313,32 +324,45 @@ class sondes:
                 einds=(alleventsmonths == mi+1) * (alleventsyears == year)
                 n_e=np.sum(einds) # number of event detections
                 if n_m==0: 
-                    if verbose: 
-                        print("%s has no measurements on %d-%d"%(self.name,year,mi+1))
+                    #if verbose: 
+                    #    print("%s has no measurements on %d-%d"%(self.name,year,mi+1))
                     continue # no measuremets this month & year
                 P[mi,yi] = n_e / float(n_m) # Likelihood of event per measurement
                 if n_e != 0:
                     I[mi,yi] = np.mean(np.array(self.eflux)[einds]/np.array(self.etropvc)[einds]) # Impact
+            
+            # for each season
+            for ii,si in enumerate(sinds):
+                I_s[ii]=np.nanmean(I[si,:])
+                P_s[ii]=np.nanmean(P[si,:])
         # end of year loop
         
-        sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]] # season indices
-        
-        # take multiyear monthly average
-        I_s         = np.array([np.nanstd(I[sinds[i],:]) for i in range(4)]) # dim: 4
-        I           = np.nanmean(I,axis=1) # dim: 12
-        #P_std       = np.nanstd(P,axis=1) # dim: 12
-        P_s         = np.array([np.nanmean(P[sinds[i],:]) for i in range(4)]) # dim: 4
-        #P_std_s     = np.array([np.nanstd(P[sinds[i],:]) for i in range(4)]) # dim: 4
+        P_m=np.nanmean(P,axis=1)
         P_std_s     = (P_s * (1-P_s))**0.5 # bernoulli distribution
-        P           = np.nanmean(P,axis=1) # multiyear mean for each month
-        P_std       = (P * (1-P))**0.5 # 
+        P_std       = (P_m * (1-P_m))**0.5 # 
         P_std_fixed = [] # seasonal stretched over monthly std
         for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
             P_std_fixed.append(P_std_s[i]) 
         P_std_fixed=np.array(P_std_fixed)
         
+        if verbose:
+            print ("%s I_std:%.5f"%(self.name,I_std))
+            print ("I")
+            print(I)
+            print("I_m")
+            print(I_m)
+            print("I_s")
+            print(I_s)
+            print ("P")
+            print(P)
+            print("P_std")
+            print(P_std)
+            print("P_m")
+            print(P_m)
+            print("P_s")
+            print(P_s)        
         
-        return {"P":P,"P_std_fixed":P_std_fixed,"P_std":P_std,"I":I,
+        return {"P":P_m,"P_std_fixed":P_std_fixed,"P_std":P_std,"I":I_m,
                 "I_s":I_s,"I_std":I_std,"P_s":P_s,"P_std_s":P_std_s}
     
     def _set_density(self):

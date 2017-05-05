@@ -415,7 +415,7 @@ def check_factors(Region):
         # How many of each month do the measurements span?
         n_months_check = np.array([len(set([date.year for date in os.dates if date.month == month])) for month in np.arange(1,12.1)])
         
-        
+        factors=os.get_flux_params(verbose=True)
         I=[] # impact list
         Im=[] # Impact month
         P=[] # probability list
@@ -428,8 +428,8 @@ def check_factors(Region):
             einds=(alleventsmonths == mi)
             
             if n_m==0: 
-                if __DEBUG__: 
-                    print("%s has no measurements on %d-%d"%(os.name,year,mi))
+                #if __DEBUG__: 
+                #    print("%s has no measurements on %d-%d"%(os.name,year,mi))
                 continue # no measuremets this month & year
             
             # impacts for this month over all the years
@@ -1704,9 +1704,9 @@ if __name__ == "__main__":
     Reg_Dav=[-79,53,-59,103]
     for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
         #check_factors(reg)
-        seasonal=True
-        name=fstr[i]+["","_S"][seasonal]+'.png'
-        plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
+        for seasonal in [True, False]:
+            name=fstr[i]+["","_S"][seasonal]+'.png'
+            plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
     
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
