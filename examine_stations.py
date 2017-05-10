@@ -29,7 +29,7 @@ from JesseRegression import RMA
 
 # GLOBALS:
 #
-__DEBUG__=True
+__DEBUG__=False
 
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
@@ -328,11 +328,12 @@ def seasonal_tropozone():
     Xstr=['J','F','M','A','M','J','J','A','S','O','N','D']
     for sind,sonde in enumerate(sondes):    
         ppbv_m  = np.zeros([12,len(levels)])
-        tp_m    = np.zeros([12,2])
+        tp_m    = np.zeros([12,3])
         ppbvs   = sonde.o3ppbv
-        alts    = sonde.gph/1000.0 # m to km
-        tplr    = np.array(sonde.tplr) # in km
-        tpo3    = np.array(sonde.tpo3) # in km
+        alts    = sonde.gph/1000.0      # m to km
+        tplr    = np.array(sonde.tplr)  # in km
+        tpo3    = np.array(sonde.tpo3)  # in km
+        tp      = np.array(sonde.tp)    # in km
         
         for i in range(12):
             month_inds=sonde.month_indices(i+1)
@@ -343,6 +344,8 @@ def seasonal_tropozone():
             
             tp_m[i,0] = np.nanmedian(tplr[month_inds])
             tp_m[i,1] = np.nanmedian(tpo3[month_inds])
+            tp_m[i,2] = np.nanmedian(tp[month_inds])
+            
         # plot each site
         plt.subplot(311 + sind)
         cf=plt.contourf(X,levels,ppbv_m.T,
@@ -350,6 +353,7 @@ def seasonal_tropozone():
                         cmap=plt.cm.jet,norm = LogNorm())
         plt.plot(X,tp_m[:,0],color='red') # plot lapse rate tropopause 
         plt.plot(X,tp_m[:,1],color='k') # plot ozone tropopause
+        #plt.plot(X,tp_m[:,2],color='m') # plot min tropopause median
         plt.title(sonde.name,fontsize=24)
         # plot axes lables
         plt.xlim([-0.5, 11.5])
@@ -364,7 +368,7 @@ def seasonal_tropozone():
     cbar_ax = f.add_axes([0.85, 0.15, 0.05, 0.7])
     cbar=f.colorbar(cf, cax=cbar_ax)
     cbar.set_label(label="Ozone [ppbv]",size=20)
-    cbar_ticks=np.logspace(1,2.5,6)
+    cbar_ticks= np.array([10,20,40,80,160,315])#np.logspace(1,2.5,6)
     cbar_ticklabels=['%5.1f'%tick for tick in cbar_ticks]
     cbar.set_ticks(cbar_ticks)
     cbar.set_ticklabels(cbar_ticklabels)
@@ -543,9 +547,10 @@ def STT_extrapolation(Region,event_lifetime=2, lifetime_uncertainty=.5, all_sond
     
     # for each site we calculate I and P
     for ii, os in enumerate(sonde_files):
-        params=os.get_flux_params() # {"P":P,"P_std":P_std_fixed,"P_std_orig":P_std,"I":I, "I_std":I_std,"P_season_std":P_season_std}
+        params=os.get_flux_params(verbose=True) # {"P":P,"P_std":P_std_fixed,"P_std_orig":P_std,"I":I, "I_std":I_std,"P_season_std":P_season_std}
         P[:,ii]=params["P"+ss]
-        P_std[:,ii]=params['P_std'+ss]
+        # P_std[:,ii]=params['P_std'+ss]
+        P_std[:,ii] = params['P_std_nonBernoulli'+ss]
         I[:,ii]=params["I"+ss]
         I_std[ii]=params["I_std"] # constant -> homoskedastic
         if __DEBUG__:
@@ -607,7 +612,7 @@ def STT_extrapolation(Region,event_lifetime=2, lifetime_uncertainty=.5, all_sond
 
 
 
-def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=False, all_sonde_files=None):
+def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=False, all_sonde_files=None, uncertainty=True):
     '''
     Plot estimate of STT flux in some particular region
     Region: [S ,W ,N ,E]
@@ -653,7 +658,8 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     plt.plot(X,flux, color='black', linewidth=3, label="STT Flux")
     # plot errorbars
     # show + or minus one standard deviation
-    plt.fill_between(X, flux_range[0,:], flux_range[1,:], color='grey', alpha='0.5')
+    if uncertainty:
+        plt.fill_between(X, flux_range[0,:], flux_range[1,:], color='grey', alpha='0.5')
     # also show bracket with dashed lines
     plt.plot(X,flux_bracket[0,:], 'k--')
     plt.plot(X,flux_bracket[1,:], 'k--')
@@ -715,8 +721,11 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     flux_unc = flux_std/flux * 100.
     
     print ("[kg/km2/month]: ")
+    outstr=''
     for ii in range(len(flux_kg)):
-        print("%d : %5.3f(%5.1f%%), "%(ii+1,flux_kg[ii],flux_unc[ii]))
+        #Davis       & 10(382\%)  & 13(325\%) & 11(405\%) & 13(353\%) \\ 
+        outstr=outstr+"%4.1f(%5.0f\\%%) & "%(flux_kg[ii],flux_unc[ii])
+    print(outstr)
     
     for jj in range(len(X)):
         outset=(jj+1,IPMT_unc[0,jj],IPMT_unc[1,jj],
@@ -1697,20 +1706,20 @@ if __name__ == "__main__":
     #check_extrapolation()
     #plot_SO_extrapolation()
     # N W S E regions:
-    all_sonde_files=[fio.read_sonde(s) for s in range(3)]
+    #all_sonde_files=[fio.read_sonde(s) for s in range(3)]
     fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
     Reg_Melb=[-48,134,-28,156]
     Reg_Mac=[-65,143,-45, 175]
     Reg_Dav=[-79,53,-59,103]
-    for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
+    #for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
         #check_factors(reg)
-        for seasonal in [True, False]:
-            name=fstr[i]+["","_S"][seasonal]+'.png'
-            plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
+        #for seasonal in [True]:#[True, False]:
+            #name=fstr[i]+["","_S"][seasonal]+'.png'
+            #plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
     
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
-    #seasonal_tropozone() # plot seasonaltropozone.png
+    seasonal_tropozone() # plot seasonaltropozone.png
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
     #time_series()

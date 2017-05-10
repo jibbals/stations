@@ -311,7 +311,7 @@ class sondes:
         I_std= np.nanstd(I_arr) # Impact stdev
         
         for mi in range(12):
-            I_m[mi]=np.nanmean(np.array(I_lst)[alleventsmonths==mi+1])
+            I_m[mi]=np.nanmean(I_arr[alleventsmonths==mi+1])
         
         sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]] # season indices
         
@@ -330,16 +330,18 @@ class sondes:
                 P[mi,yi] = n_e / float(n_m) # Likelihood of event per measurement
                 if n_e != 0:
                     I[mi,yi] = np.mean(np.array(self.eflux)[einds]/np.array(self.etropvc)[einds]) # Impact
-            
-            # for each season
-            for ii,si in enumerate(sinds):
-                I_s[ii]=np.nanmean(I[si,:])
-                P_s[ii]=np.nanmean(P[si,:])
-        # end of year loop
+        # End of year loop
+        P_std_NB_s=np.zeros(4)+np.NaN
+        # for each season
+        for ii,si in enumerate(sinds):
+            I_s[ii]=np.nanmean(I[si,:])
+            P_s[ii]=np.nanmean(P[si,:])
+            P_std_NB_s[ii]=np.nanstd(P[si,:])
         
         P_m=np.nanmean(P,axis=1)
         P_std_s     = (P_s * (1-P_s))**0.5 # bernoulli distribution
         P_std       = (P_m * (1-P_m))**0.5 # 
+        P_std_NB    = np.nanstd(P,axis=1)
         P_std_fixed = [] # seasonal stretched over monthly std
         for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
             P_std_fixed.append(P_std_s[i]) 
@@ -353,17 +355,19 @@ class sondes:
             print(I_m)
             print("I_s")
             print(I_s)
-            print ("P")
-            print(P)
-            print("P_std")
+            #print("P")
+            #print(P)
+            print("P_std (Bernoulli, then nanstd)")
             print(P_std)
+            print(P_std_NB)
             print("P_m")
             print(P_m)
             print("P_s")
             print(P_s)        
         
         return {"P":P_m,"P_std_fixed":P_std_fixed,"P_std":P_std,"I":I_m,
-                "I_s":I_s,"I_std":I_std,"P_s":P_s,"P_std_s":P_std_s}
+                "I_s":I_s,"I_std":I_std,"P_s":P_s,"P_std_s":P_std_s,
+                "P_std_nonBernoulli":P_std_NB,"P_std_nonBernoulli_s":P_std_NB_s}
     
     def _set_density(self):
         '''
