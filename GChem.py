@@ -135,7 +135,7 @@ class GChem:
                 date.append(datetime(year,month+1,1))
         return data, date, std
     
-    def averagedTVC(self, Region, homeoskedastic=True):
+    def averagedTVC(self, Region, homoskedastic=True):
         '''
         Average tropospheric vertical column for Region
         Region: [S ,W ,N ,E]        
@@ -160,7 +160,7 @@ class GChem:
             minds=np.where(allmonths == i+1)[0]
             data[i]=np.mean(TVC[minds])
             std[i]=np.std(TVC[minds])
-        if homeoskedastic:
+        if homoskedastic:
             std=np.std(TVC)
         return data, std
     

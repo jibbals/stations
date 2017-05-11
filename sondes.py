@@ -297,77 +297,44 @@ class sondes:
         n_years=len(set(allyears))
         allmonths=np.array([ d.month for d in self.dates ])
         alleventsmonths=np.array([ d.month for d in self.edates ])
-        alleventsyears=np.array([ d.year for d in self.edates ])
         
-        I=np.ndarray([12,n_years]) +np.NaN  # I for each month each year
         I_m = np.ndarray([12]) + np.NaN   # I for each month 
-        P=np.ndarray([12,n_years]) +np.NaN# P for each month each year
-        P_m=np.ndarray([12])+np.NaN # P for each month
-        P_s=np.zeros(4)+np.NaN # seasonal Prob of occurrence
-        I_s=np.zeros(4)+np.NaN # seasonal Impact
+        P_m = np.ndarray([12]) + np.NaN   # P for each month
+        P_s = np.zeros(4) + np.NaN # seasonal Prob of occurrence
+        I_s = np.zeros(4) + np.NaN # seasonal Impact
         
         I_arr=np.array(self.eflux)/np.array(self.etropvc) #Impacts
-        I_lst=list(I_arr) # list of I values
         I_std= np.nanstd(I_arr) # Impact stdev
         
+        # for each month
         for mi in range(12):
             I_m[mi]=np.nanmean(I_arr[alleventsmonths==mi+1])
+            P_m[mi]=np.nansum(alleventsmonths==mi+1) / float(np.nansum(allmonths==mi+1))
         
         sinds=[[11,0,1],[2,3,4],[5,6,7],[8,9,10]] # season indices
         
-        # for each year
-        for yi,year in enumerate(set(allyears)):
-            # for each month
-            for mi in range(12):
-                inds=(allmonths == mi+1) * (allyears == year)
-                n_m=np.sum(inds) # number of measurements
-                einds=(alleventsmonths == mi+1) * (alleventsyears == year)
-                n_e=np.sum(einds) # number of event detections
-                if n_m==0: 
-                    #if verbose: 
-                    #    print("%s has no measurements on %d-%d"%(self.name,year,mi+1))
-                    continue # no measuremets this month & year
-                P[mi,yi] = n_e / float(n_m) # Likelihood of event per measurement
-                if n_e != 0:
-                    I[mi,yi] = np.mean(np.array(self.eflux)[einds]/np.array(self.etropvc)[einds]) # Impact
-        # End of year loop
-        P_std_NB_s=np.zeros(4)+np.NaN
         # for each season
         for ii,si in enumerate(sinds):
-            I_s[ii]=np.nanmean(I[si,:])
-            P_s[ii]=np.nanmean(P[si,:])
-            P_std_NB_s[ii]=np.nanstd(P[si,:])
-        
-        P_m=np.nanmean(P,axis=1)
-        P_std_s     = (P_s * (1-P_s))**0.5 # bernoulli distribution
-        P_std       = (P_m * (1-P_m))**0.5 # 
-        P_std_NB    = np.nanstd(P,axis=1)
-        P_std_fixed = [] # seasonal stretched over monthly std
-        for i in [0,0,0,1,1,1,2,2,2,3,3,3]:
-            P_std_fixed.append(P_std_s[i]) 
-        P_std_fixed=np.array(P_std_fixed)
+            inds=np.in1d(allmonths,si) # true where month contained by si
+            einds=np.in1d(alleventsmonths,si)
+            
+            I_s[ii]=np.nanmean(I_arr[einds]) # Impact
+            P_s[ii]=np.nansum(einds)/float(np.nansum(inds)) # occurrences / measurements
         
         if verbose:
             print ("%s I_std:%.5f"%(self.name,I_std))
             print ("I")
-            print(I)
+            print(I_arr)
             print("I_m")
             print(I_m)
             print("I_s")
             print(I_s)
-            #print("P")
-            #print(P)
-            print("P_std (Bernoulli, then nanstd)")
-            print(P_std)
-            print(P_std_NB)
             print("P_m")
             print(P_m)
             print("P_s")
             print(P_s)        
         
-        return {"P":P_m,"P_std_fixed":P_std_fixed,"P_std":P_std,"I":I_m,
-                "I_s":I_s,"I_std":I_std,"P_s":P_s,"P_std_s":P_std_s,
-                "P_std_nonBernoulli":P_std_NB,"P_std_nonBernoulli_s":P_std_NB_s}
+        return {"P_m":P_m,"P_s":P_s,"I":I_arr,"I_m":I_m,"I_s":I_s,"I_std":I_std}
     
     def _set_density(self):
         '''
