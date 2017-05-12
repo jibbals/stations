@@ -683,6 +683,7 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
         #Davis       & 10(382\%)  & 13(325\%) & 11(405\%) & 13(353\%) \\ 
         outstr=outstr+"%4.1f(%5.0f\\%%) & "%(flux_kg[ii],flux_unc[ii])
     print(outstr)
+    print("Total = %5.1e"%np.nansum(flux_kg))
     
     print("Uncertainty:")
     print("month: I    : P     : M     : T    : Total")
