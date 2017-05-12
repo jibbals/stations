@@ -630,12 +630,12 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     rax.set_ylim([ylim0tg,ylim1tg])
     rax.set_ylabel('[Tg month$^{-1}$]')    
     # chuck formula onto plot
-    plt.text(0.525,0.895,r'$\Delta \Omega_{trop O_3} = \Omega_{trop O_3} * I * P * M$', fontsize=28, transform = rax.transAxes)
+    plt.text(0.525,0.895,r'$\Delta \Omega_{O_3} = \Omega_{O_3} * I * P * M$', fontsize=28, transform = rax.transAxes)
     
     # plot factors on seperate subplot
     ax=axes[0]
     plt.sca(ax)
-    l1=plt.plot(X, GCTropO3, 'k', linewidth=2, label="$\Omega_{trop O_3}$")
+    l1=plt.plot(X, GCTropO3, 'k', linewidth=2, label="$\Omega_{O_3}$")
     #plt.title("Tropospheric ozone VCs in sub region (GEOS-Chem)")
     plt.xlim(Xlims)
     #plt.xlabel('Month')
@@ -674,7 +674,7 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     # flux : [molecules O3/ cm2 / month]
     #         x  * cm2/km2 * g/mol * kg/g * mol/molecule]
     flux_kg  = flux * 1e10 * g_per_mol* 1e-3 * (1/N_A) # kg / km2 / month
-    IPMT_unc = IPMT_std/IPMT * 100
+    IPMT_unc = IPMT_std/IPMT * 100.
     flux_unc = flux_std/flux * 100.
     
     print ("[kg/km2/month]: ")
@@ -1671,7 +1671,7 @@ if __name__ == "__main__":
     Reg_Mac=[-65,143,-45, 175]
     Reg_Dav=[-79,53,-59,103]
     Reg_SO=[-79,53,-28,175]
-    plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
+    #plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
     for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
         #check_factors(reg)
         for seasonal in [False]:#[True, False]:
