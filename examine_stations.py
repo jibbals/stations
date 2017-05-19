@@ -1657,14 +1657,13 @@ def check_GC_output():
 
 if __name__ == "__main__":
     print ("Running")
-    #brief_summary()
-    #summary_plots()
+    brief_summary()
+    summary_plots()
     #sonde_profile(datetime(2005,2,3), name='images/melb_sonde_20050203.png')
     #sonde_profile(datetime(2010,10,13), name='images/melb_sonde_20101013.png')
     #event_profiles_best()
     #plot_andrew_STT()
-    #check_extrapolation()
-    #plot_SO_extrapolation()
+    check_extrapolation()
     # N W S E regions:
     all_sonde_files=[fio.read_sonde(s) for s in range(3)]
     fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
@@ -1672,16 +1671,16 @@ if __name__ == "__main__":
     Reg_Mac=[-65,143,-45, 175]
     Reg_Dav=[-79,53,-59,103]
     Reg_SO=[-79,53,-28,175]
-    #plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
+    plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
     for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
-        #check_factors(reg)
+        check_factors(reg)
         for seasonal in [False]:#[True, False]:
             name=fstr[i]+["","_S"][seasonal]+'.png'
             plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
     
     #check_weird_tp(2006)# look at profile of low tp sondes
-    #seasonal_tropopause(shading=False) # plot tpheights.png
-    #seasonal_tropozone() # plot seasonaltropozone.png
+    seasonal_tropopause(shading=False) # plot tpheights.png
+    seasonal_tropozone() # plot seasonaltropozone.png
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
     #time_series()

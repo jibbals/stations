@@ -99,7 +99,7 @@ class sondes:
             self.tp[di], self.tplr[di], self.tpo3[di])
         return profile
     
-    def plot_profile(self, date, ytop=14, xtop=130, size=(8,16), alltps=False, rh=True, ):
+    def plot_profile(self, date, ytop=15, xtop=130, size=(8,16), alltps=True, rh=True):
         import matplotlib.pyplot as plt
         prof=self.get_profile(date)
         date2=prof[4]
@@ -109,9 +109,19 @@ class sondes:
         
         fig=plt.figure(figsize=size)
         ax1= fig.add_subplot(111)
-        ax1.plot(prof[1],yaxi,'k',linewidth=2.0)
+        ax1.plot(prof[1], yaxi, '-k', linewidth=2.0)
+        
+        # draw peak spot if this is an event profile
+        ind=self.get_index(date)
+        if ind in self.einds:
+            eindind=self.einds.index(ind)
+            peak=self.epeak[eindind]
+            
+            print(ind,eindind,peak)
+            ax1.plot([40,60],[peak,peak],'--k')
         ax2 = ax1.twiny()
         ax2.plot(prof[2],yaxi,'r')
+        
         if alltps:
             ax1.plot([xl,xr],[prof[6],prof[6]],'--r')
             ax1.plot([xl,xr],[prof[7],prof[7]],'--k')
@@ -377,24 +387,38 @@ class sondes:
                 # doesn't include tropopause layer
                 self.tropvc.append( np.nansum( vcp[i, 0:tpind] ) )
         
-    def _set_events(self):
+    def _set_events(self, csvname=None):
         '''
         return indices of dates matching event days in the CSVs (created from IDL)
         In this case the csv's are close to UTC+0 I think
         '''
+        if len(self.einds) > 0: 
+            self.einds=[]
+            self.edates=[]
+            self.edatedeltas=[]
+            self.eflux=[]
+            self.epeak=[]
+            self.edepth=[]
+            self.fireflagged=[]
+            self.etype=[]
         
-        csvs={"Melbourne":"events_melb.csv",
-              "Macquarie":"events_mac.csv",
-              "Davis":"events_dav.csv"}
-
-        filename="data/"+csvs[self.name]
+        #Default event list: updated 19/5/2017
+        #csvs={"Melbourne":"data/events_melb.csv",
+        #      "Macquarie":"data/events_mac.csv",
+        #      "Davis":"data/events_dav.csv"}
+        csvs={"Melbourne":"../ozoneIDL/Data/melb_co95.csv",
+              "Macquarie":"../ozoneIDL/Data/mac_co95.csv",
+              "Davis":"../ozoneIDL/Data/dav_co95.csv"}
+        
+        filename=[csvname,csvs[self.name]][csvname is None]
+            
         with open(filename, 'rb') as csvfile:
             reader = csv.reader(csvfile)
             #YYYY	MM	DD	HH	tropozone	flux	peak	tp	fire	etype
             header=reader.next()
             for row in reader:
                 # Y, M, D, H
-                ir=[int(x) for x in row[0:4]] # change strings to ints
+                ir=[int(float(x)) for x in row[0:4]] # change strings to ints
                 edate=datetime(ir[0],ir[1],ir[2],ir[3])
                 # sort by difference between csv date and sonde date
                 closest = sorted(self.dates, key = lambda d : abs( d - edate))[0]
@@ -418,7 +442,11 @@ class sondes:
                 self.fireflagged.append(row[8] == "1")
                 
                 # finally grab the likely cause of the event (misc,front,cutoff)
-                self.etype.append(int(row[9]))
+                try:
+                    self.etype.append(int(row[9]))
+                except IndexError:
+                    self.etype.append(0)
+                    
     
     def degrade_vertically(self, gc):
         '''
