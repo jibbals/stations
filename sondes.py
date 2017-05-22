@@ -406,9 +406,9 @@ class sondes:
         #csvs={"Melbourne":"data/events_melb.csv",
         #      "Macquarie":"data/events_mac.csv",
         #      "Davis":"data/events_dav.csv"}
-        csvs={"Melbourne":"../ozoneIDL/Data/melb_co95.csv",
-              "Macquarie":"../ozoneIDL/Data/mac_co95.csv",
-              "Davis":"../ozoneIDL/Data/dav_co95.csv"}
+        csvs={"Melbourne":"data/melb_co95.csv",
+              "Macquarie":"data/mac_co95.csv",
+              "Davis":"data/dav_co95.csv"}
         
         filename=[csvname,csvs[self.name]][csvname is None]
             
