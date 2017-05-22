@@ -69,7 +69,7 @@ def plot_AIRS_day(date):
     
     # draw the CO total column onto the map
     cs = m.pcolor(xi,yi,np.squeeze(totco)) # squeeze removes any 1 length dimensions
-
+    
     # set up consistent colour map (the colour bar)
     cmap = plt.cm.jet # blue to red
     plt.set_cmap(cmap)
@@ -87,7 +87,7 @@ def plot_AIRS_day(date):
     plt.title('Total Column CO'+date.strftime("%Y%m%d"))
     return(m)
 
-def plot_all_events_AIRS():
+def plot_all_events_AIRS(test=False):
     '''
     loop through sites and plot all events
     '''
@@ -121,13 +121,16 @@ def plot_all_events_AIRS():
             plt.savefig(outf, bbox_inches='tight')
             print ("Saved "+outf)
             plt.close(fig)
+            if test: 
+                return ()
 
 def check_high_CO(date, site ,radius, threshold=2e18):
     '''
     If there is a column with greather than threshold [molecules/cm2] of CO, 
         within radius of site then return True
     '''
-    print ('NYE')
+    lat=site.lat
+    lon=site.lon
 
 if __name__ == "__main__":
-    plot_all_events_AIRS()
+    plot_all_events_AIRS(test=True)
