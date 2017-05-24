@@ -26,7 +26,7 @@ from scipy.constants import N_A # avegadro's number
 # Local module for reading sonde dataset
 import fio
 from JesseRegression import RMA
-
+import GChem
 # GLOBALS:
 #
 __DEBUG__=False
@@ -450,7 +450,7 @@ def sondes_in_region(Region, sonde_files_list):
         print([s.name for s in sonde_files])
     return(sonde_files)
 
-def STT_extrapolation(Region, event_lifetime=2, lifetime_uncertainty=.5, all_sonde_files=None, seasonal=False):
+def STT_extrapolation(Region, event_lifetime=2, lifetime_uncertainty=.5, all_sonde_files=None, seasonal=False, keepfires=False):
     '''
     Estimate STT flux in a particular region
     Region: [S ,W ,N ,E]
@@ -506,7 +506,7 @@ def STT_extrapolation(Region, event_lifetime=2, lifetime_uncertainty=.5, all_son
     
     # for each site we calculate I and P
     for ii, os in enumerate(sonde_files):
-        params=os.get_flux_params(verbose=False) 
+        params=os.get_flux_params(keepfires=keepfires) 
         P[:,ii]=params["P"+ss] # P_m or P_s; monthly or seasonally
         
         I[:,ii]=params["I"+ss]
@@ -566,7 +566,21 @@ def STT_extrapolation(Region, event_lifetime=2, lifetime_uncertainty=.5, all_son
             "flux_std":flux_std, "flux_range":flux_range,
             "IPMT_std":IPMT_std, "flux_bracket":flux_bracket}
 
-
+def get_flux(Region, seasonal=False, all_sonde_files=None, uncertainty=True, keepfires=False):
+    '''
+    '''
+    extrap = STT_extrapolation(Region, all_sonde_files=all_sonde_files, seasonal=seasonal, keepfires=keepfires)
+    flux=extrap["flux"] # molec/cm2/month
+    
+    # conversion to Tg/yr:
+    gca=fio.get_GC_area()
+    so_area=gca.region_area(Region) # m2
+    g_per_mol=48 # g/Mol
+    molecs=np.sum(flux) # molec/cm2/yr
+    
+    # [molec/cm2/month] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
+    Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # = Tg/month
+    return ({'Tg_per_month':Tg_per_month,'molec_per_cm2_per_a':molecs,'flux':flux})
 
 def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=False, all_sonde_files=None, uncertainty=True):
     '''
@@ -691,51 +705,38 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
                 IPMT_unc[2,jj],IPMT_unc[3,jj],flux_unc[jj])
         print("%d :  %.2f%% & %.2f%% & %.2f%% & %.2f%% & %3.2f"%outset)
     
-
-def SO_extrapolation(north=-35,south=-75):
-    '''
-    Rough estimate of flux over southern ocean
-    A wrapper for STT_extrapolation
-    '''
-    region=[south,-179.9,north,179.9] #Region: [S ,W ,N ,E]
-    return STT_extrapolation(region)
-    
-
-def plot_SO_extrapolation(north=-35,south=-75):
-    '''
-    plot estimate of Southern Oceanic STT flux
-    '''
-    region=[south,-179.9,north,179.9] #Region: [S ,W ,N ,E]
-    pltname='images/SO_extrapolation.png'
-    plot_extrapolation(region,pltname=pltname)
-
-def check_extrapolation():
+def check_extrapolation(sondes):
     '''
     Calculate the extrapolation, and it's sensitivity to changes in range changes
+    and Fire inclusions
     '''
-    # model SO tropospheric O3 Column:
-    GCData=fio.read_GC_global()
+    # default regions:
+    Reg_Melb=[-48,134,-28,156]
+    Reg_Mac=[-65,143,-45, 175]
+    Reg_Dav=[-79,53,-59,103]
+    reg=[Reg_Dav,Reg_Mac,Reg_Melb]
+    for i in range(3):
+        for keepfires in [False,True]:
+            flux=get_flux(reg[i],all_sonde_files=sondes,keepfires=keepfires)
+            # extrapolation using our lat range of -50 to -75
+            print('extrapolation%s over %s'%(['',' with fires'][keepfires],str(reg[i])))
+            #print(flux['Tg_per_month'])
+            print(r"sum = %5e2 Tg yr^{-1}"%np.sum(flux['Tg_per_month']))
+        
+    flux=[]
+    gca=GChem.GCArea()
     
-    # extrapolation using our lat range of -50 to -75
-    print('calculating default extrapolation over -35 to -75:')
-    sotropo3=np.mean(GCData.southernOceanTVC(north=-35,south=-75))
-    
-    # extrapolation with southern lat of -70 and -80
-    sotropo3s1=np.mean(GCData.southernOceanTVC(north=-35,south=-70)) # South+5
-    sotropo3s2=np.mean(GCData.southernOceanTVC(north=-35,south=-80)) # South-5
-    
-    # extrapolation with northern lat of -55 and -45
-    sotropo3n1=np.mean(GCData.southernOceanTVC(north=-40,south=-75)) # North-5
-    sotropo3n2=np.mean(GCData.southernOceanTVC(north=-30,south=-75)) # North+5
-    
-    dl=[] # [ds1, ds2, dn1, dn2]
-    for d in [sotropo3s1,sotropo3s2,sotropo3n1,sotropo3n2]:
-        dl.append( 100 * (sotropo3 - d) / sotropo3 )
-    # differences
-    print('relative differences with changing lat bounds: ')
-    print('    %6s %6s '%('+5','-5') )
-    print(' N :%6.3f %6.3f '%(dl[3],dl[2]) )
-    print(' S :%6.3f %6.3f '%(dl[0],dl[1]) )
+    for i in range(3):
+        for regplus in [[0,0,0,0],[1,1,-1,-1],[-1,-1,1,1]]:
+            # regular, smaller, bigger
+            region=list(np.array(reg[i])+np.array(regplus))
+            flux=get_flux(region,all_sonde_files=sondes)
+            print('extrapolation over %s'%(str(region)))
+            #print(flux['Tg_per_month'])
+            print(r"sum = %7f2 Tg yr^{-1}"%np.sum(flux['Tg_per_month']))
+            print(r"Area = %4e2 km^2"%gca.region_area(region))
+            
+        
 
 def seasonal_profiles(hour=0, degradesondes=False, pctl=10):
     '''
@@ -1650,36 +1651,43 @@ def check_GC_output():
     print(pltname+ " saved")
     plt.close()
 
+def Extrapolation_FireInfluence():
+    ''' 
+    Check what the regional total yearly amount would be with/without fires removed
+    '''
+    
+
 ###########################################################################
 #####################    Run Section                       ################
 ###########################################################################
 
 if __name__ == "__main__":
     print ("Running")
-    brief_summary()
-    summary_plots()
+    #brief_summary()
+    #summary_plots()
     #sonde_profile(datetime(2005,2,3), name='images/melb_sonde_20050203.png')
     #sonde_profile(datetime(2010,10,13), name='images/melb_sonde_20101013.png')
     #event_profiles_best()
     #plot_andrew_STT()
-    # check_extrapolation()
+    
     # N W S E regions:
     all_sonde_files=[fio.read_sonde(s) for s in range(3)]
-    fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
-    Reg_Melb=[-48,134,-28,156]
-    Reg_Mac=[-65,143,-45, 175]
-    Reg_Dav=[-79,53,-59,103]
-    Reg_SO=[-79,53,-28,175]
-    plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
-    for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
-        check_factors(reg)
-        for seasonal in [False]:#[True, False]:
-            name=fstr[i]+["","_S"][seasonal]+'.png'
-            plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
+    check_extrapolation(all_sonde_files)
+#    fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
+#    Reg_Melb=[-48,134,-28,156]
+#    Reg_Mac=[-65,143,-45, 175]
+#    Reg_Dav=[-79,53,-59,103]
+#    Reg_SO=[-79,53,-28,175]
+#    plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
+#    for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
+#        #check_factors(reg)
+#        for seasonal in [False]:#[True, False]:
+#            name=fstr[i]+["","_S"][seasonal]+'.png'
+#            plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
     
     #check_weird_tp(2006)# look at profile of low tp sondes
-    seasonal_tropopause(shading=False) # plot tpheights.png
-    seasonal_tropozone() # plot seasonaltropozone.png
+    #seasonal_tropopause(shading=False) # plot tpheights.png
+    #seasonal_tropozone() # plot seasonaltropozone.png
     #check_GC_output()
     #[event_profiles(s,legend = (s==1)) for s in [0,1,2]]
     #time_series()

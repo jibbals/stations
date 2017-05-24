@@ -299,15 +299,20 @@ class sondes:
     
         return(ndat)
     
-    def get_flux_params(self, verbose=False):
+    def get_flux_params(self, verbose=False, keepfires=False):
         ''' Find I and P and the std_deviations '''
         
         # Used to get indices from certain month or year:
         allyears=np.array([ d.year for d in self.dates ])
         n_years=len(set(allyears))
         allmonths=np.array([ d.month for d in self.dates ])
+        finds=np.where(self.fireflagged) # fire indices
+        if keepfires:
+            finds=[]
+            if verbose:
+                print('keeping %d fires'%np.sum(self.fireflagged))
         alleventsmonths=np.array([ d.month for d in self.edates ])
-        
+        alleventsmonths[finds]=-1
         I_m = np.ndarray([12]) + np.NaN   # I for each month 
         P_m = np.ndarray([12]) + np.NaN   # P for each month
         P_s = np.zeros(4) + np.NaN # seasonal Prob of occurrence
@@ -330,19 +335,6 @@ class sondes:
             
             I_s[ii]=np.nanmean(I_arr[einds]) # Impact
             P_s[ii]=np.nansum(einds)/float(np.nansum(inds)) # occurrences / measurements
-        
-        if verbose:
-            print ("%s I_std:%.5f"%(self.name,I_std))
-            print ("I")
-            print(I_arr)
-            print("I_m")
-            print(I_m)
-            print("I_s")
-            print(I_s)
-            print("P_m")
-            print(P_m)
-            print("P_s")
-            print(P_s)        
         
         return {"P_m":P_m,"P_s":P_s,"I":I_arr,"I_m":I_m,"I_s":I_s,"I_std":I_std}
     
@@ -392,6 +384,8 @@ class sondes:
         return indices of dates matching event days in the CSVs (created from IDL)
         In this case the csv's are close to UTC+0 I think
         '''
+        # reset event indices if we're calling this function
+        
         if len(self.einds) > 0: 
             self.einds=[]
             self.edates=[]
