@@ -486,7 +486,6 @@ def STT_extrapolation(Region, event_lifetime=2, lifetime_uncertainty=.5, all_son
     
     # Events per measurement or Event (P)robability
     P=np.zeros([Tdim,n_s])
-    P_std=np.zeros([Tdim,n_s])
     
     # (M)easurements per month
     M=30.0/float(event_lifetime)# Set M parameter using assumed event lifetime
@@ -630,7 +629,7 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     rax.set_ylim([ylim0tg,ylim1tg])
     rax.set_ylabel('[Tg month$^{-1}$]')    
     # chuck formula onto plot
-    plt.text(0.525,0.895,r'$\Delta \Omega_{O_3} = \Omega_{O_3} * I * P * M$', fontsize=28, transform = rax.transAxes)
+    plt.text(0.525,0.895,r'$\Delta \Omega_{O_3} = \Omega_{O_3} \mathrm{x} I \mathrm{x} P \mathrm{x} M$', fontsize=28, transform = rax.transAxes)
     
     # plot factors on seperate subplot
     ax=axes[0]
@@ -645,14 +644,14 @@ def plot_extrapolation(Region, pltname='images/STT_extrapolation.png', seasonal=
     # plot percentages
     newax=plt.twinx()
     # likelihood pct * pct contribution
-    l2=newax.plot(X,I*4, color='teal', label='I*4')
+    l2=newax.plot(X,I*10, color='teal', label='I$\mathrm{x}$10')
     l3=newax.plot(X,P, color='magenta', label='P')
     # l4=newax.plot(X,M/20.0, color='brown', label='M/20')
     
     # axes and legends
     #newax.legend(loc=1)
     newax.set_ylabel('factors')
-    newax.set_ylim([0,0.5])
+    newax.set_ylim([0,1.0])
     lns=l1+l2+l3#+l4
     plt.legend(lns,[ln.get_label() for ln in lns], loc=0)
     sreg="[%dS, %dE, %dS, %dE]"%(-1*Region[0],Region[1],-1*Region[2],Region[3])
@@ -1663,7 +1662,7 @@ if __name__ == "__main__":
     #sonde_profile(datetime(2010,10,13), name='images/melb_sonde_20101013.png')
     #event_profiles_best()
     #plot_andrew_STT()
-    check_extrapolation()
+    # check_extrapolation()
     # N W S E regions:
     all_sonde_files=[fio.read_sonde(s) for s in range(3)]
     fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]

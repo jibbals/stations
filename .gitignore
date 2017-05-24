@@ -3,3 +3,6 @@
 **/trac_avg_geos5*
 images/
 **/*~
+
+# Unremove mainfolder images:
+!images/*.png

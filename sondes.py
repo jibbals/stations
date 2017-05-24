@@ -444,7 +444,9 @@ class sondes:
                 # finally grab the likely cause of the event (misc,front,cutoff)
                 try:
                     self.etype.append(int(row[9]))
-                except IndexError:
+                except IndexError: # no entry in col 9
+                    self.etype.append(0)
+                except ValueError: # empty string in col 9
                     self.etype.append(0)
                     
     
