@@ -336,7 +336,7 @@ class sondes:
             I_s[ii]=np.nanmean(I_arr[einds]) # Impact
             P_s[ii]=np.nansum(einds)/float(np.nansum(inds)) # occurrences / measurements
         
-        return {"P_m":P_m,"P_s":P_s,"I":I_arr,"I_m":I_m,"I_s":I_s,"I_std":I_std}
+        return {"P_m":P_m,"P_s":P_s,"I":I_arr,"I_m":I_m,"I_s":I_s,"I_std":I_std,"I_arr":I_arr}
     
     def _set_density(self):
         '''

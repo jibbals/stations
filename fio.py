@@ -32,6 +32,7 @@ from sondes import sondes
 _Datadir='./data/'
 _sondesdir='./data/sondes/'
 _sitenames = ['Davis','Macquarie','Melbourne']
+GC_stn_from_name={'Davis':0,'Macquarie':1,'Melbourne':2}
 _Datafiles=[ _Datadir+d+'.nc' for d in _sitenames]
 _sondesdirs=[_sondesdir+s for s in _sitenames]
 _trac_avgs=_Datadir+"GC/trac_avg/*.nc"

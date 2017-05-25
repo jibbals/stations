@@ -30,7 +30,12 @@ import GChem
 # GLOBALS:
 #
 __DEBUG__=False
-
+# N W S E regions:
+Reg_Melb=[-48,134,-28,156]
+Reg_Mac=[-65,143,-45, 175]
+Reg_Dav=[-79,53,-59,103]
+Reg_SO=[-79,53,-28,175]
+RegByName={'Melbourne':Reg_Melb,'Macquarie':Reg_Mac,'Davis':Reg_Dav}
 # seasonal colormap
 seasonal_cmap=matplotlib.colors.ListedColormap(['fuchsia','chocolate','cyan','darkgreen'])
 # colours for model vs sondes
@@ -1655,11 +1660,52 @@ def check_GC_output():
     print(pltname+ " saved")
     plt.close()
 
-def Extrapolation_FireInfluence():
-    ''' 
-    Check what the regional total yearly amount would be with/without fires removed
-    '''
+def flux_plots():
+    ''' five number summary plots of flux '''
     
+    sondes=[fio.read_sonde(s) for s in range(3)]
+    Rel_flux=[]
+    Abs_flux=[]
+    x_names=[]
+    
+    for sonde in sondes:
+        sn=sonde.name
+        x_names.append(sn)
+        I=np.array(sonde.eflux)/np.array(sonde.etropvc)
+        print('max I of %.3f at %s'%(np.nanmax(I),sn))
+        Rel_flux.append(I)
+        Abs_flux.append(np.array(sonde.eflux))
+    
+    fig,axes=plt.subplots(2,1,figsize=(8,12),sharex=True)
+    plt.sca(axes[0])
+    kwargs={'showfliers':True, 'patch_artist':True, 'widths':0.6}
+    abox=plt.boxplot(Abs_flux, **kwargs)
+    plt.ylabel(r'ozone [molecules cm$^{-2}$ event$^{-1}$]')
+    plt.title('Ozone STT flux')
+    
+    plt.sca(axes[1])
+    rbox=plt.boxplot(Rel_flux, labels=x_names, **kwargs)
+    plt.ylabel('%')
+    
+    # style stuff
+    # plot x tick names
+    #axes[1].set_xticklabels(x_names)
+    for ax in axes:
+        # remove top and right tickmarks
+        ax.get_xaxis().tick_bottom()
+        ax.get_yaxis().tick_left()
+    for boxplot in [abox, rbox]:
+        for box in boxplot['boxes']:
+            
+            box.set_color('#ff4455') #edge color
+            box.set_facecolor('#aa3344')# fill color
+        for flier in boxplot['fliers']:
+            flier.set(marker='o', color='r') # outlier marker
+    
+    pname='images/flux_boxes.png'
+    plt.savefig(pname,bbox_inches='tight')
+    print(pname+' Saved')
+    plt.close(fig)
 
 ###########################################################################
 #####################    Run Section                       ################
@@ -1674,14 +1720,10 @@ if __name__ == "__main__":
     #event_profiles_best()
     #plot_andrew_STT()
     
-    # N W S E regions:
-    all_sonde_files=[fio.read_sonde(s) for s in range(3)]
-    check_extrapolation(all_sonde_files)
+    flux_plots()
+    #all_sonde_files=[fio.read_sonde(s) for s in range(3)]
+    #check_extrapolation(all_sonde_files)
     #fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
-    #Reg_Melb=[-48,134,-28,156]
-    #Reg_Mac=[-65,143,-45, 175]
-    #Reg_Dav=[-79,53,-59,103]
-    #Reg_SO=[-79,53,-28,175]
     #plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
     #for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
         #check_factors(reg)
