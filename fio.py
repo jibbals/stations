@@ -21,7 +21,7 @@ from glob import glob
 from tau_to_date import tau_to_date as ttd
 
 # data classes
-from GChem import GChem,GCArea
+from GChem import GChem, GCArea
 from sondes import sondes
 
 ########################

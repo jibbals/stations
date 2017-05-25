@@ -527,13 +527,13 @@ def STT_extrapolation(Region, event_lifetime=2, lifetime_uncertainty=.5, all_son
     IPMT_std[2,:] = M_std
     IPMT_std[3,:] = T_std
     
-    # flux = I*P*M*T
+    # flux = I*P*M*T # = [molecules/cm2/month]
     flux = np.nanprod(IPMT,axis=0)
     
     # Product variance from Sandy Burden:
     # Var(IPMT) = (P(1-P) + P^2) * (var(I)+I^2) * (var(T) + T^2) * (var(M) + M^2) - (IPMT)^2
     IPMT_var    = IPMT_std ** 2
-    flux_prod_a = np.nanprod([IPMT_var[i,:]+IPMT[i,:]**2 for i in range(4)],axis=0) # dim 12 or 4        
+    flux_prod_a = np.nanprod([IPMT_var[i,:]+IPMT[i,:]**2 for i in range(4)],axis=0) # dim 12 or 4
     flux_var    = flux_prod_a - flux**2
     flux_std    = flux_var**0.5
     
@@ -576,7 +576,7 @@ def get_flux(Region, seasonal=False, all_sonde_files=None, uncertainty=True, kee
     gca=fio.get_GC_area()
     so_area=gca.region_area(Region) # m2
     g_per_mol=48 # g/Mol
-    molecs=np.sum(flux) # molec/cm2/yr
+    molecs=np.nansum(flux) # molec/cm2/yr
     
     # [molec/cm2/month] * [cm2/m2] * [m2] * [Mol/molec] * [g/Mol] * Tg/g
     Tg_per_month= flux*1e4 * so_area * 1/N_A * g_per_mol * 1e-12 # = Tg/month
@@ -718,23 +718,27 @@ def check_extrapolation(sondes):
     for i in range(3):
         for keepfires in [False,True]:
             flux=get_flux(reg[i],all_sonde_files=sondes,keepfires=keepfires)
-            # extrapolation using our lat range of -50 to -75
+            # return ({'Tg_per_month':Tg_per_month,'molec_per_cm2_per_a':molecs,'flux':flux})
+            
             print('extrapolation%s over %s'%(['',' with fires'][keepfires],str(reg[i])))
             #print(flux['Tg_per_month'])
-            print(r"sum = %5e2 Tg yr^{-1}"%np.sum(flux['Tg_per_month']))
+            print(r"sum = %5.2e Tg yr^{-1}"%np.sum(flux['Tg_per_month']))
+            print(r"sum = %5.2e molec cm^{-2} yr^{-1}"%flux['molec_per_cm2_per_a'])
         
     flux=[]
     gca=GChem.GCArea()
     
     for i in range(3):
+        # region = [South, West, North, East
         for regplus in [[0,0,0,0],[1,1,-1,-1],[-1,-1,1,1]]:
             # regular, smaller, bigger
             region=list(np.array(reg[i])+np.array(regplus))
             flux=get_flux(region,all_sonde_files=sondes)
             print('extrapolation over %s'%(str(region)))
             #print(flux['Tg_per_month'])
-            print(r"sum = %7f2 Tg yr^{-1}"%np.sum(flux['Tg_per_month']))
-            print(r"Area = %4e2 km^2"%gca.region_area(region))
+            #print(r"sum = %7f2 Tg yr^{-1}"%np.sum(flux['Tg_per_month']))
+            print(r"sum = %5.2e molec cm^{-2} yr^{-1}"%flux['molec_per_cm2_per_a'])
+            print(r"Area = %5.2e km^2"%gca.region_area(region))
             
         
 
@@ -1673,17 +1677,17 @@ if __name__ == "__main__":
     # N W S E regions:
     all_sonde_files=[fio.read_sonde(s) for s in range(3)]
     check_extrapolation(all_sonde_files)
-#    fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
-#    Reg_Melb=[-48,134,-28,156]
-#    Reg_Mac=[-65,143,-45, 175]
-#    Reg_Dav=[-79,53,-59,103]
-#    Reg_SO=[-79,53,-28,175]
-#    plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
-#    for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
-#        #check_factors(reg)
-#        for seasonal in [False]:#[True, False]:
-#            name=fstr[i]+["","_S"][seasonal]+'.png'
-#            plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
+    #fstr=['images/STT_extrapolation_%s'%(s) for s in ['Melb','Mac','Dav']]
+    #Reg_Melb=[-48,134,-28,156]
+    #Reg_Mac=[-65,143,-45, 175]
+    #Reg_Dav=[-79,53,-59,103]
+    #Reg_SO=[-79,53,-28,175]
+    #plot_extrapolation(Reg_SO, pltname="images/STT_extrapolation_SO.png", seasonal=False,all_sonde_files=all_sonde_files)
+    #for i,reg in enumerate([Reg_Melb, Reg_Mac, Reg_Dav]):
+        #check_factors(reg)
+    #    for seasonal in [False]:#[True, False]:
+    #        name=fstr[i]+["","_S"][seasonal]+'.png'
+    #        plot_extrapolation(reg,pltname=name,seasonal=seasonal, all_sonde_files=all_sonde_files)
     
     #check_weird_tp(2006)# look at profile of low tp sondes
     #seasonal_tropopause(shading=False) # plot tpheights.png
